@@ -1,6 +1,7 @@
 #include "codec.h"
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 namespace tutorial {
 namespace {
 struct Block { Values dictionary; std::vector<std::uint32_t> ids; };
@@ -15,8 +16,8 @@ Block parse(const Bytes &bytes) {
   for (std::size_t i = 0; i < d; ++i) {
     const auto length = in.get(4);
     require(length <= max_string_bytes - total && length <= bytes.size() - in.pos);
-    std::string value(bytes.begin() + static_cast<std::ptrdiff_t>(in.pos),
-                      bytes.begin() + static_cast<std::ptrdiff_t>(in.pos + length));
+    std::string value(reinterpret_cast<const char *>(bytes.data() + in.pos),
+                      static_cast<std::size_t>(length));
     in.pos += static_cast<std::size_t>(length);
     total += static_cast<std::size_t>(length);
     require(unique.insert(value).second);
