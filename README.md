@@ -45,7 +45,7 @@ recovery start=3 scanned=3 pages=10,30
 
 `src/wal.hpp` 先看 Store 的 dirty/active 维护，再看 `Checkpoint`、`safeStart`、`checkpoint`、`loadCheckpoint`、`recover`。加载器验证长度、类型、校验、LSN 边界、重复键、TT/DPT 指向的日志记录，并重新计算安全起点。`tests/tests.cpp` 用 fork + `_exit` 直接跳过析构，再让另一个新进程恢复，测试发布中断及重复恢复。
 
-检查点构建 O(L + T log T)，保存 O(P+T+D)；查找事务使用标准有序集合。启动仍读全日志 O(L) 空间/I/O；实际投影重放扫描 O(L-start+1)，测试记录 `replayScanned`。没有日志裁剪，因为活跃事务链和生成新镜像仍需要历史。P=4，D≤4。构建检查点会阻塞业务，这不是高吞吐在线实现。
+检查点构建 O(L log T)，保存 O(P+T+D)；查找事务使用标准有序集合。启动仍读全日志 O(L) 空间/I/O；实际投影重放扫描 O(L-start+1)，测试记录 `replayScanned`。没有日志裁剪，因为活跃事务链和生成新镜像仍需要历史。P=4，D≤4。构建检查点会阻塞业务，这不是高吞吐在线实现。
 
 ## 构建、预期与边界测试
 

@@ -52,6 +52,14 @@ int main() {
     {Fd fd(dir.path+"/checkpoint",O_WRONLY); unsigned char bad=0;writeAll(fd.value,&bad,1);}
     throws([&]{Store db(dir.path);db.recover();});
   }
+  {Temp dir; {Store db(dir.path);db.begin(1);db.update(1,0,1);db.commit(1);}
+    Store db(dir.path);throws([&]{db.begin(2);});db.recover();db.begin(2);throws([&]{db.recover();});}
+  {Temp dir;
+    {Store db(dir.path);db.begin(1);db.update(1,0,5);db.update(1,0,9);db.log.flush();}
+    auto invalid=pack({Commit,3,1,0,0,0,1,0}); // Not the transaction's latest LSN.
+    {Fd fd(dir.path+"/wal",O_WRONLY|O_APPEND);writeAll(fd.value,invalid.data(),invalid.size());}
+    throws([&]{Store db(dir.path);});
+  }
   std::cout<<"WAL crash, repetition, bounds, ownership, tail and checksum checks passed\n";
  } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; return 1; }
 }
