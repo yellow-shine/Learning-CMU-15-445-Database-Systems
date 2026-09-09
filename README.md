@@ -14,9 +14,11 @@
 
 ## 当前状态
 
-**82 个知识点已规划；0 个通过最终验收。上一轮因模型额度耗尽中断，现已从现有候选分支恢复实施。**
+**82 个知识点中，10 个已验证（01–10）；其余 72 个尚未完成验收。接下来继续存储引擎模块。**
 
-已对 07、08、11、12、13、18、19 的精确提交完成独立 Debug／Release 构建、CTest 和 demo 检查，均通过；源码审查仍待完成。见[恢复阶段验证记录](docs/validation/recovery-build-check.md)。
+C++ 基础、关系模型与 SQL 的实现、中文讲解、Debug／Release 测试和独立源码审查均通过。见[模块 1 验收记录](docs/validation/module-01-cpp.md)和[模块 2 验收记录](docs/validation/module-02-relational-sql.md)。
+
+11、12、13、18、19 的候选提交已独立通过 Debug／Release 构建、CTest 和 demo 检查，源码审查仍待完成。见[恢复阶段验证记录](docs/validation/recovery-build-check.md)。
 
 表中的分支名是交付清单，不代表全部分支已经存在。候选分支的开发者测试通过后仍需独立审查；只有实现、讲解及测试验收通过并提交后，才标记为“已验证”。
 
@@ -26,21 +28,21 @@
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/01-cpp-raii` | 对象生命周期、RAII、资源释放；文件资源守卫 | 已规划 |
-| `topic/02-cpp-smart-pointers` | unique_ptr、shared_ptr、weak_ptr、所有权与循环引用 | 已规划 |
-| `topic/03-cpp-move-semantics` | 左值／右值、移动构造、移动赋值；可移动缓冲区 | 已规划 |
-| `topic/04-cpp-templates` | 模板、泛型；简单的泛型数据库组件 | 已规划 |
-| `topic/05-cpp-stl` | 容器、迭代器、算法、迭代器失效；数据库场景示例 | 已规划 |
-| `topic/06-cpp-threading` | 线程、互斥锁、条件变量、读写锁；生产者／消费者队列 | 已规划 |
+| `topic/01-cpp-raii` | 对象生命周期、RAII、资源释放；文件资源守卫 | 已验证 |
+| `topic/02-cpp-smart-pointers` | unique_ptr、shared_ptr、weak_ptr、所有权与循环引用 | 已验证 |
+| `topic/03-cpp-move-semantics` | 左值／右值、移动构造、移动赋值；可移动缓冲区 | 已验证 |
+| `topic/04-cpp-templates` | 模板、泛型；简单的泛型数据库组件 | 已验证 |
+| `topic/05-cpp-stl` | 容器、迭代器、算法、迭代器失效；数据库场景示例 | 已验证 |
+| `topic/06-cpp-threading` | 线程、互斥锁、条件变量、读写锁；生产者／消费者队列 | 已验证 |
 
 ### 2. 关系模型与 SQL 逻辑层
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/07-relational-model` | Relation、Tuple、Attribute、Schema；类型化关系与元组 | 已规划 |
-| `topic/08-relational-constraints` | 主键、外键、非空、检查约束；约束验证 | 已规划 |
-| `topic/09-relational-algebra` | 选择、投影、并、交、差、笛卡尔积、连接；集合语义关系代数 | 已规划 |
-| `topic/10-sql-planning` | SQL、Parser、Binder、逻辑计划、物理计划；限定语法范围的查询转换 | 已规划 |
+| `topic/07-relational-model` | Relation、Tuple、Attribute、Schema；类型化关系与元组 | 已验证 |
+| `topic/08-relational-constraints` | 主键、外键、非空、检查约束；约束验证 | 已验证 |
+| `topic/09-relational-algebra` | 选择、投影、并、交、差、笛卡尔积、连接；集合语义关系代数 | 已验证 |
+| `topic/10-sql-planning` | SQL、Parser、Binder、逻辑计划、物理计划；限定语法范围的查询转换 | 已验证 |
 
 ### 3. 存储引擎
 
