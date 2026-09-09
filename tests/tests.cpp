@@ -4,6 +4,9 @@
 int main() {
   TempFile file(3); Disk disk(file.path());
   rejects([&] { BufferPool invalid(disk, 0); });
+  BufferPool capacity(disk, 2);
+  capacity.fetch(0); capacity.unpin(0); capacity.fetch(1); capacity.unpin(1);
+  CHECK(capacity.resident() == 2); // Consume free frames before evicting residents.
   BufferPool pool(disk, 1);
   auto& first = pool.fetch(0);
   CHECK(&first == &pool.fetch(0)); CHECK(pool.resident() == 1); CHECK(pool.pins(0) == 2);
