@@ -79,12 +79,18 @@ public:
   bool trimmedTail = false;
   explicit Log(const std::string& path) : fd(path, O_CREAT | O_RDWR) {
     auto bytes = readAll(fd.value);
+    std::map<Word,Word> last; std::set<Word> ended;
     for (std::size_t offset = 0; offset + recordBytes <= bytes.size(); offset += recordBytes) {
       auto p = bytes.data() + offset;
       require(word(p+64) == checksum(p,64), "corrupt log checksum (not a torn tail)");
       Record r{word(p),word(p+8),word(p+16),word(p+24),word(p+32),word(p+40),word(p+48),word(p+56)};
       require(r.lsn == records.size()+1 && r.kind >= Update && r.kind <= Abort && r.tx > 0 && r.page < 4 && r.prev < r.lsn && r.next == 0, "invalid log fields");
       if (r.prev) require(records.at(r.prev-1).tx == r.tx, "invalid transaction chain");
+      require(!ended.count(r.tx) && r.prev==last[r.tx], "broken transaction history");
+      if(r.kind!=Update) {
+        require(r.page==0 && r.before==0 && r.after==0,"terminal fields"); ended.insert(r.tx);
+      }
+      last[r.tx]=r.lsn;
       records.push_back(r);
     }
     auto valid = records.size()*recordBytes;
@@ -106,6 +112,7 @@ class Store {
   std::map<Word,Word> active;
   std::set<Word> used;
   std::map<Word,Word> owners;
+  bool recoveryRequired=false;
 public:
   Log log;
   std::array<Page,4> pages{};
@@ -118,8 +125,9 @@ public:
       for (std::size_t i=0;i<4;++i) { pages[i] = {word(bytes.data()+i*16),word(bytes.data()+i*16+8)}; require(pages[i].lsn <= log.records.size(), "page ahead of WAL"); }
     }
     for (const auto& r : log.records) used.insert(r.tx);
+    recoveryRequired=!log.records.empty();
   }
-  void begin(Word tx) { require(tx > 0 && !used.count(tx), "transaction id reused"); used.insert(tx); active[tx]=0; }
+  void begin(Word tx) { require(!recoveryRequired,"recover before accepting transactions"); require(tx > 0 && !used.count(tx), "transaction id reused"); used.insert(tx); active[tx]=0; }
   Word update(Word tx, Word page, Word value) {
     require(active.count(tx) && page < pages.size(), "invalid update");
     require(!owners.count(page) || owners[page] == tx, "write conflict: strict ownership");
@@ -143,6 +151,7 @@ public:
   }
   std::size_t redone=0, undone=0;
   void recover(const std::function<void(const char*)>& hook = {}) {
+    require(active.empty(),"cannot recover active instance"); recoveryRequired=true;
     // ponytail: rebuild from genesis rather than trusting partially undone disk pages.
     pages={}; redone=undone=0;
     std::set<Word> committed, aborted;
@@ -166,7 +175,7 @@ public:
     if(hook) hook("pages");
     // End markers exclude old losers when future committed updates reuse their pages.
     for(auto e:losers) log.append({Abort,0,e.first,0,0,0,e.second,0});
-    log.flush(); active.clear(); owners.clear();
+    log.flush(); active.clear(); owners.clear(); recoveryRequired=false;
   }
 };
 }
