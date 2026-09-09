@@ -67,3 +67,16 @@ ctest --test-dir build-release --output-on-failure
 
 本分支是独立快照，不需要检出任何相关分支。知识点总目录见 `main:README.md`
 （例如 `git show main:README.md`），不要把实现分支合并回目录分支。
+
+### macOS 工具链排障
+
+若默认 AppleClang 报 `<vector>` / `<array>` 不存在，使用已安装 SDK 的 libc++ 头文件，
+无需安装依赖或修改 CMake。对 Debug 与 Release **都**传入：
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-isystem $(xcrun --show-sdk-path)/usr/include/c++/v1"
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-isystem $(xcrun --show-sdk-path)/usr/include/c++/v1"
+```
+
+然后执行上述 build、CTest 和 demo。本机验收采用此参数；编辑器未加载编译配置时的
+标准头文件缺失诊断属于同一工具链问题，不代表已经通过静态分析。
