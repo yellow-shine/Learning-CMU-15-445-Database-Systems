@@ -60,6 +60,14 @@ int main() {
     {Fd fd(dir.path+"/wal",O_WRONLY|O_APPEND);writeAll(fd.value,invalid.data(),invalid.size());}
     throws([&]{Store db(dir.path);});
   }
+  {Temp dir;
+    child([&]{Store db(dir.path);db.begin(1);db.checkpoint();});
+    child([&]{Store db(dir.path);throws([&]{db.begin(2);});db.recover();throws([&]{db.begin(1);});db.begin(2);db.commit(2);});
+  }
+  {Temp dir;
+    child([&]{Store db(dir.path);db.begin(1);db.update(1,0,8);db.checkpoint();db.commit(1);});
+    child([&]{Store db(dir.path);db.recover();require(db.pages[0].value==8,"commit without post-checkpoint update");});
+  }
   std::cout<<"WAL crash, repetition, bounds, ownership, tail and checksum checks passed\n";
  } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; return 1; }
 }

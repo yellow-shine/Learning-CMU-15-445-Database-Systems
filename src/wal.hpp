@@ -126,7 +126,7 @@ public:
       for (std::size_t i=0;i<4;++i) { pages[i] = {word(bytes.data()+i*16),word(bytes.data()+i*16+8)}; require(pages[i].lsn <= log.records.size(), "page ahead of WAL"); }
     }
     for (const auto& r : log.records) used.insert(r.tx);
-    recoveryRequired=!log.records.empty();
+    recoveryRequired=!log.records.empty() || std::filesystem::exists(dir+"/checkpoint");
   }
   void begin(Word tx) { require(!recoveryRequired,"recover before accepting transactions"); require(tx > 0 && !used.count(tx), "transaction id reused"); used.insert(tx); active[tx]=0; }
   Word update(Word tx, Word page, Word value) {
