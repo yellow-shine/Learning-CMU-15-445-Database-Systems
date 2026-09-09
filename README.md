@@ -14,13 +14,13 @@
 
 ## 当前状态
 
-**82 个知识点中，21 个已验证（01–21）；其余 61 个尚未完成验收。Buffer Pool 的 22–27 已提交候选实现，尚待独立审查。**
+**82 个知识点全部已验证（01–82）。实现在各自的 `topic/` 分支，未合并进 `main`。**
 
-C++ 基础、关系模型与 SQL、存储引擎、压缩的实现、中文讲解、Debug／Release 测试和独立源码审查均通过。见[模块 1](docs/validation/module-01-cpp.md)、[模块 2](docs/validation/module-02-relational-sql.md)、[模块 3–4 验收记录](docs/validation/modules-03-04-storage-compression.md)。列存越界问题已修复，并通过回归测试、ASan 和独立复审。
+中文讲解、C++17 实现、Debug／Release 测试、demo 和独立源码审查均通过。P1 均已修复并复审。剩余文档／测试证据类 P2 见[模块 5–14 验收记录](docs/validation/modules-05-14-acceptance.md)。
 
-早期候选构建检查见[恢复阶段验证记录](docs/validation/recovery-build-check.md)，最终验收以各模块记录中的精确提交为准。
+前四模块记录：[模块 1](docs/validation/module-01-cpp.md)、[模块 2](docs/validation/module-02-relational-sql.md)、[模块 3–4](docs/validation/modules-03-04-storage-compression.md)。
 
-表中的分支名是交付清单，不代表全部分支已经存在。候选分支的开发者测试通过后仍需独立审查；只有实现、讲解及测试验收通过并提交后，才标记为“已验证”。
+切换已验证分支即可构建运行；本机头文件问题见下方 macOS 说明。
 
 ## 知识点总目录
 
@@ -69,112 +69,112 @@ C++ 基础、关系模型与 SQL、存储引擎、压缩的实现、中文讲解
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/22-buffer-pool` | Page 与 Frame、页表、Pin／Unpin、Dirty、Flush、Eviction | 实现中（待审查） |
-| `topic/23-lru` | LRU 替换策略、访问轨迹实验 | 实现中（待审查） |
-| `topic/24-clock` | Clock 替换策略、引用位 | 实现中（待审查） |
-| `topic/25-lru-k` | LRU-K、访问历史、淘汰选择 | 实现中（待审查） |
-| `topic/26-disk-scheduler` | 异步磁盘请求、后台线程、完成通知、错误传播 | 实现中（待审查） |
-| `topic/27-page-guard` | RAII 页守卫、Pin 生命周期、读写保护 | 实现中（待审查） |
+| `topic/22-buffer-pool` | Page 与 Frame、页表、Pin／Unpin、Dirty、Flush、Eviction | 已验证 |
+| `topic/23-lru` | LRU 替换策略、访问轨迹实验 | 已验证 |
+| `topic/24-clock` | Clock 替换策略、引用位 | 已验证 |
+| `topic/25-lru-k` | LRU-K、访问历史、淘汰选择 | 已验证 |
+| `topic/26-disk-scheduler` | 异步磁盘请求、后台线程、完成通知、错误传播 | 已验证 |
+| `topic/27-page-guard` | RAII 页守卫、Pin 生命周期、读写保护 | 已验证 |
 
 ### 6. 哈希表
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/28-linear-probing` | 静态哈希、开放寻址、冲突探测、删除标记 | 已规划 |
-| `topic/29-robin-hood-hashing` | 探测距离、交换规则、删除处理 | 已规划 |
-| `topic/30-cuckoo-hashing` | 多候选位置、驱逐链、重建 | 已规划 |
-| `topic/31-extendible-hashing` | 动态哈希、目录、全局／局部深度、桶分裂 | 已规划 |
-| `topic/32-hash-index` | Key → RID 索引、重复键、等值查找 | 已规划 |
+| `topic/28-linear-probing` | 静态哈希、开放寻址、冲突探测、删除标记 | 已验证 |
+| `topic/29-robin-hood-hashing` | 探测距离、交换规则、删除处理 | 已验证 |
+| `topic/30-cuckoo-hashing` | 多候选位置、驱逐链、重建 | 已验证 |
+| `topic/31-extendible-hashing` | 动态哈希、目录、全局／局部深度、桶分裂 | 已验证 |
+| `topic/32-hash-index` | Key → RID 索引、重复键、等值查找 | 已验证 |
 
 ### 7. 树索引、过滤器与向量索引
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/33-bplus-tree-insert` | 叶子／内部节点、扇出、树高、查找、插入、递归分裂 | 已规划 |
-| `topic/34-bplus-tree-delete` | 删除、下溢、借位、合并、根收缩 | 已规划 |
-| `topic/35-bplus-tree-iterator` | 叶链、范围查询、迭代器 | 已规划 |
-| `topic/36-concurrent-bplus-tree` | Lock 与 Latch 区别、读写 latch、Latch Coupling／Crabbing | 已规划 |
-| `topic/37-bloom-filter` | 概率过滤器、假阳性、无假阴性的适用条件 | 已规划 |
-| `topic/38-vector-search` | 距离度量、精确 Top-K 检索；近似检索的正确性基线 | 已规划 |
-| `topic/39-ivf-index` | 简化 IVF、向量索引、候选裁剪、召回率取舍 | 已规划 |
+| `topic/33-bplus-tree-insert` | 叶子／内部节点、扇出、树高、查找、插入、递归分裂 | 已验证 |
+| `topic/34-bplus-tree-delete` | 删除、下溢、借位、合并、根收缩 | 已验证 |
+| `topic/35-bplus-tree-iterator` | 叶链、范围查询、迭代器 | 已验证 |
+| `topic/36-concurrent-bplus-tree` | Lock 与 Latch 区别、读写 latch、Latch Coupling／Crabbing | 已验证 |
+| `topic/37-bloom-filter` | 概率过滤器、假阳性、无假阴性的适用条件 | 已验证 |
+| `topic/38-vector-search` | 距离度量、精确 Top-K 检索；近似检索的正确性基线 | 已验证 |
+| `topic/39-ivf-index` | 简化 IVF、向量索引、候选裁剪、召回率取舍 | 已验证 |
 
 ### 8. 排序与聚合
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/40-external-merge-sort` | 有界内存、生成有序段、K 路归并、磁盘 I/O | 已规划 |
-| `topic/41-sort-aggregation` | 排序分组、COUNT／SUM／AVG／MIN／MAX | 已规划 |
-| `topic/42-hash-aggregation` | 哈希分组、聚合状态、结果生成 | 已规划 |
+| `topic/40-external-merge-sort` | 有界内存、生成有序段、K 路归并、磁盘 I/O | 已验证 |
+| `topic/41-sort-aggregation` | 排序分组、COUNT／SUM／AVG／MIN／MAX | 已验证 |
+| `topic/42-hash-aggregation` | 哈希分组、聚合状态、结果生成 | 已验证 |
 
 ### 9. Join 算法
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/43-nested-loop-join` | 嵌套循环连接、比较次数 | 已规划 |
-| `topic/44-index-nested-loop-join` | 使用索引探测内表 | 已规划 |
-| `topic/45-sort-merge-join` | 排序归并连接、重复键匹配 | 已规划 |
-| `topic/46-hash-join` | Build／Probe、重复键、构建侧选择 | 已规划 |
+| `topic/43-nested-loop-join` | 嵌套循环连接、比较次数 | 已验证 |
+| `topic/44-index-nested-loop-join` | 使用索引探测内表 | 已验证 |
+| `topic/45-sort-merge-join` | 排序归并连接、重复键匹配 | 已验证 |
+| `topic/46-hash-join` | Build／Probe、重复键、构建侧选择 | 已验证 |
 
 ### 10. 查询执行引擎
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/47-volcano-execution` | Iterator／Volcano、Init／Next、Scan → Filter → Projection | 已规划 |
-| `topic/48-materialized-execution` | 算子完整物化中间结果、内存开销 | 已规划 |
-| `topic/49-vectorized-execution` | 批量数据、批量算子、选择向量 | 已规划 |
-| `topic/50-pipelines` | Pipeline、Pipeline Breaker、算子执行边界 | 已规划 |
-| `topic/51-access-executors` | SeqScan、IndexScan、访问路径对比 | 已规划 |
-| `topic/52-modification-executors` | Insert、Update、Delete、表／索引维护 | 已规划 |
-| `topic/53-limit-executor` | LIMIT、OFFSET、提前终止 | 已规划 |
-| `topic/54-window-functions` | 分区、排序、窗口；排名和累计聚合的明确子集 | 已规划 |
+| `topic/47-volcano-execution` | Iterator／Volcano、Init／Next、Scan → Filter → Projection | 已验证 |
+| `topic/48-materialized-execution` | 算子完整物化中间结果、内存开销 | 已验证 |
+| `topic/49-vectorized-execution` | 批量数据、批量算子、选择向量 | 已验证 |
+| `topic/50-pipelines` | Pipeline、Pipeline Breaker、算子执行边界 | 已验证 |
+| `topic/51-access-executors` | SeqScan、IndexScan、访问路径对比 | 已验证 |
+| `topic/52-modification-executors` | Insert、Update、Delete、表／索引维护 | 已验证 |
+| `topic/53-limit-executor` | LIMIT、OFFSET、提前终止 | 已验证 |
+| `topic/54-window-functions` | 分区、排序、窗口；排名和累计聚合的明确子集 | 已验证 |
 
 ### 11. 查询优化器
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/55-predicate-pushdown` | 谓词下推、引用列分析、不能下推的情况 | 已规划 |
-| `topic/56-projection-pushdown` | 列裁剪、保留后续算子所需列 | 已规划 |
-| `topic/57-aggregation-pushdown` | 局部／最终聚合、AVG 分解、安全改写条件 | 已规划 |
-| `topic/58-limit-pushdown` | LIMIT 下推合法条件、错误改写反例 | 已规划 |
-| `topic/59-physical-plan-selection` | 逻辑／物理算子选择、等值连接转换为 Hash Join | 已规划 |
-| `topic/60-statistics-estimation` | 统计信息、直方图、选择率、基数估计 | 已规划 |
-| `topic/61-cost-model` | I/O 与 CPU 成本模型、估计值和实测计数对比 | 已规划 |
-| `topic/62-join-ordering` | 连接顺序枚举、动态规划、计划成本比较 | 已规划 |
+| `topic/55-predicate-pushdown` | 谓词下推、引用列分析、不能下推的情况 | 已验证 |
+| `topic/56-projection-pushdown` | 列裁剪、保留后续算子所需列 | 已验证 |
+| `topic/57-aggregation-pushdown` | 局部／最终聚合、AVG 分解、安全改写条件 | 已验证 |
+| `topic/58-limit-pushdown` | LIMIT 下推合法条件、错误改写反例 | 已验证 |
+| `topic/59-physical-plan-selection` | 逻辑／物理算子选择、等值连接转换为 Hash Join | 已验证 |
+| `topic/60-statistics-estimation` | 统计信息、直方图、选择率、基数估计 | 已验证 |
+| `topic/61-cost-model` | I/O 与 CPU 成本模型、估计值和实测计数对比 | 已验证 |
+| `topic/62-join-ordering` | 连接顺序枚举、动态规划、计划成本比较 | 已验证 |
 
 ### 12. 事务与并发控制
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/63-transaction-acid` | 事务状态、提交／中止、转账；区分内存回滚与持久性保证 | 已规划 |
-| `topic/64-conflict-serializability` | Schedule、冲突、优先图、环检测 | 已规划 |
-| `topic/65-two-phase-locking` | S／X 锁、兼容矩阵、升级、2PL、Strict 2PL | 已规划 |
-| `topic/66-deadlocks` | 等待图、死锁检测、牺牲者选择、中止释放 | 已规划 |
-| `topic/67-timestamp-ordering` | 读／写时间戳、顺序检查、事务中止 | 已规划 |
-| `topic/68-optimistic-concurrency-control` | Read／Validate／Write、读写集、冲突验证 | 已规划 |
-| `topic/69-mvcc-versioning` | 时间戳、Undo Log、版本链、历史元组重建 | 已规划 |
-| `topic/70-snapshot-isolation` | 快照可见性、写写冲突、提交检查 | 已规划 |
-| `topic/71-isolation-anomalies` | 隔离级别、脏读、不可重复读、幻读、丢失更新、写偏斜 | 已规划 |
-| `topic/72-serializable-mvcc` | 多版本上的保守串行化验证、阻止写偏斜 | 已规划 |
+| `topic/63-transaction-acid` | 事务状态、提交／中止、转账；区分内存回滚与持久性保证 | 已验证 |
+| `topic/64-conflict-serializability` | Schedule、冲突、优先图、环检测 | 已验证 |
+| `topic/65-two-phase-locking` | S／X 锁、兼容矩阵、升级、2PL、Strict 2PL | 已验证 |
+| `topic/66-deadlocks` | 等待图、死锁检测、牺牲者选择、中止释放 | 已验证 |
+| `topic/67-timestamp-ordering` | 读／写时间戳、顺序检查、事务中止 | 已验证 |
+| `topic/68-optimistic-concurrency-control` | Read／Validate／Write、读写集、冲突验证 | 已验证 |
+| `topic/69-mvcc-versioning` | 时间戳、Undo Log、版本链、历史元组重建 | 已验证 |
+| `topic/70-snapshot-isolation` | 快照可见性、写写冲突、提交检查 | 已验证 |
+| `topic/71-isolation-anomalies` | 隔离级别、脏读、不可重复读、幻读、丢失更新、写偏斜 | 已验证 |
+| `topic/72-serializable-mvcc` | 多版本上的保守串行化验证、阻止写偏斜 | 已验证 |
 
 ### 13. WAL 与恢复
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/73-write-ahead-logging` | 日志记录、LSN、日志先行规则、提交持久化 | 已规划 |
-| `topic/74-buffer-recovery-policies` | Steal／No-Steal、Force／No-Force、Undo／Redo 需求 | 已规划 |
-| `topic/75-checkpointing` | 检查点、事务表、脏页表、恢复起点 | 已规划 |
-| `topic/76-redo-undo` | 已提交事务重做、未提交事务撤销、重复恢复 | 已规划 |
-| `topic/77-aries-recovery` | 教学子集的 Analysis／Redo／Undo、PageLSN、CLR、恢复中再次崩溃 | 已规划 |
+| `topic/73-write-ahead-logging` | 日志记录、LSN、日志先行规则、提交持久化 | 已验证 |
+| `topic/74-buffer-recovery-policies` | Steal／No-Steal、Force／No-Force、Undo／Redo 需求 | 已验证 |
+| `topic/75-checkpointing` | 检查点、事务表、脏页表、恢复起点 | 已验证 |
+| `topic/76-redo-undo` | 已提交事务重做、未提交事务撤销、重复恢复 | 已验证 |
+| `topic/77-aries-recovery` | 教学子集的 Analysis／Redo／Undo、PageLSN、CLR、恢复中再次崩溃 | 已验证 |
 
 ### 14. 分布式与并行数据库入门
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/78-partitioning` | 哈希／范围分区、路由、数据倾斜 | 已规划 |
-| `topic/79-replication` | 主从复制、同步／异步确认、复制滞后、故障边界 | 已规划 |
-| `topic/80-distributed-transactions` | 两阶段提交、跨节点事务、持久化决策、阻塞问题 | 已规划 |
-| `topic/81-distributed-query` | 数据交换、广播／重分区连接、局部聚合 | 已规划 |
-| `topic/82-parallel-execution` | 分区并行、工作分配、结果合并、OLTP／OLAP 工作负载取舍 | 已规划 |
+| `topic/78-partitioning` | 哈希／范围分区、路由、数据倾斜 | 已验证 |
+| `topic/79-replication` | 主从复制、同步／异步确认、复制滞后、故障边界 | 已验证 |
+| `topic/80-distributed-transactions` | 两阶段提交、跨节点事务、持久化决策、阻塞问题 | 已验证 |
+| `topic/81-distributed-query` | 数据交换、广播／重分区连接、局部聚合 | 已验证 |
+| `topic/82-parallel-execution` | 分区并行、工作分配、结果合并、OLTP／OLAP 工作负载取舍 | 已验证 |
 
 Bloom Filter、IVF 和两阶段提交是为原始资料中的“过滤器”“向量索引”“分布式事务”选择的具体教学算法，并非原文指定的算法。
 
@@ -200,7 +200,7 @@ WAL → 检查点 → 恢复
 
 ## 每个知识点的使用方式
 
-以下是实现分支须提供的统一命令约定；当前 `main` 只有目录与设计，不能执行这些构建命令。
+以下是已验证分支的统一命令：
 
 ```sh
 # 仅对总目录中已标记为“已验证”的分支执行
