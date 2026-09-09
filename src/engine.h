@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 struct Row { int key; int value; };
 struct Batch { std::vector<Row> rows; std::vector<std::size_t> selection; };
