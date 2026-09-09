@@ -8,7 +8,11 @@
 #include <vector>
 
 class ExtendibleHash {
-  struct Bucket { unsigned depth; std::vector<std::pair<int, int>> entries; };
+  using Entry = std::pair<int, int>;
+  struct Bucket {
+    unsigned depth;
+    std::vector<Entry> entries;
+  };
   std::vector<std::shared_ptr<Bucket>> directory_;
   unsigned global_depth_ = 0;
   unsigned max_depth_;
