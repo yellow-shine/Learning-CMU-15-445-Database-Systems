@@ -1,218 +1,100 @@
-# CMU 15-445 数据库内核：独立教学实现
+# 10：从 SQL 文本到可执行物理计划
 
-依据 [`spec.md`](spec.md) 拆解数据库内核知识，用 **C++17 独立教学实现**解释其机制。课程介绍中的重复内容与 BusTub P0–P4 项目内容已去重；本仓库不依赖 BusTub，也不是任何单一学期的官方项目答案。
+独立 C++17 教程，无第三方依赖。总目录见 `git show main:README.md`。前置知识：07 的类型/schema、09 的选择投影乘积、C++ variant 与 unique_ptr。`src/relation.h` 附带 08 中裁剪过的 07 类型验证快照；本分支不使用集合 Relation，而使用保留重复行的 BagTable。
 
-## 已确认的组织方式
+## 要解决的问题
 
-- 一个可独立学习、验证的算法或机制，对应一个 `topic/NN-name` Git 分支。
-- 各分支独立构建，包含中文讲解、可运行实现、演示和测试；不需要切换其他分支取代码。
-- 紧密关联的概念合并讲解，例如 Page ID、Slot ID、RID；具有独立机制的算法分别实现。
-- `main` 保留本目录、原始资料和设计文档，不累积全部知识点实现。
-- 实现目标为“教学级机制完整”，不是生产级数据库；简化、适用范围和不支持的能力必须写清楚。
-
-设计与验收细节见 [`docs/superpowers/specs/2026-09-09-database-topics-design.md`](docs/superpowers/specs/2026-09-09-database-topics-design.md)。
-
-## 当前状态
-
-**82 个知识点已规划；0 个实现完成；尚未创建知识点分支。**
-
-表中的分支名是计划名称，不代表分支已经存在。只有实现、讲解及测试验收通过并提交后，才标记为“已验证”。
-
-## 知识点总目录
-
-### 1. C++ 基础
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/01-cpp-raii` | 对象生命周期、RAII、资源释放；文件资源守卫 | 已规划 |
-| `topic/02-cpp-smart-pointers` | unique_ptr、shared_ptr、weak_ptr、所有权与循环引用 | 已规划 |
-| `topic/03-cpp-move-semantics` | 左值／右值、移动构造、移动赋值；可移动缓冲区 | 已规划 |
-| `topic/04-cpp-templates` | 模板、泛型；简单的泛型数据库组件 | 已规划 |
-| `topic/05-cpp-stl` | 容器、迭代器、算法、迭代器失效；数据库场景示例 | 已规划 |
-| `topic/06-cpp-threading` | 线程、互斥锁、条件变量、读写锁；生产者／消费者队列 | 已规划 |
-
-### 2. 关系模型与 SQL 逻辑层
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/07-relational-model` | Relation、Tuple、Attribute、Schema；类型化关系与元组 | 已规划 |
-| `topic/08-relational-constraints` | 主键、外键、非空、检查约束；约束验证 | 已规划 |
-| `topic/09-relational-algebra` | 选择、投影、并、交、差、笛卡尔积、连接；集合语义关系代数 | 已规划 |
-| `topic/10-sql-planning` | SQL、Parser、Binder、逻辑计划、物理计划；限定语法范围的查询转换 | 已规划 |
-
-### 3. 存储引擎
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/11-disk-page-io` | 磁盘导向数据库、文件、固定大小 Page、Page ID；页读写 | 已规划 |
-| `topic/12-tuple-layout` | 元组序列化、定长／变长字段、NULL 位图、元数据 | 已规划 |
-| `topic/13-slotted-page` | 页头、Slot、RID、空闲空间；页内增删改查与整理 | 已规划 |
-| `topic/14-heap-file` | 堆表、跨页存储、RID 定位、堆扫描 | 已规划 |
-| `topic/15-row-store` | NSM 行存布局、整行访问 | 已规划 |
-| `topic/16-column-store` | DSM 列存布局、列扫描、晚物化基础 | 已规划 |
-| `topic/17-pax-layout` | PAX 页内分列、行列混合布局的取舍 | 已规划 |
-
-### 4. 数据压缩
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/18-rle` | 游程编码、解码、适用数据分布 | 已规划 |
-| `topic/19-bit-packing` | 位宽计算、整数打包与解包 | 已规划 |
-| `topic/20-dictionary-encoding` | 字典构建、编码、解码、编码上的等值过滤 | 已规划 |
-| `topic/21-delta-encoding` | 差分编码、还原、边界处理 | 已规划 |
-
-### 5. Buffer Pool
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/22-buffer-pool` | Page 与 Frame、页表、Pin／Unpin、Dirty、Flush、Eviction | 已规划 |
-| `topic/23-lru` | LRU 替换策略、访问轨迹实验 | 已规划 |
-| `topic/24-clock` | Clock 替换策略、引用位 | 已规划 |
-| `topic/25-lru-k` | LRU-K、访问历史、淘汰选择 | 已规划 |
-| `topic/26-disk-scheduler` | 异步磁盘请求、后台线程、完成通知、错误传播 | 已规划 |
-| `topic/27-page-guard` | RAII 页守卫、Pin 生命周期、读写保护 | 已规划 |
-
-### 6. 哈希表
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/28-linear-probing` | 静态哈希、开放寻址、冲突探测、删除标记 | 已规划 |
-| `topic/29-robin-hood-hashing` | 探测距离、交换规则、删除处理 | 已规划 |
-| `topic/30-cuckoo-hashing` | 多候选位置、驱逐链、重建 | 已规划 |
-| `topic/31-extendible-hashing` | 动态哈希、目录、全局／局部深度、桶分裂 | 已规划 |
-| `topic/32-hash-index` | Key → RID 索引、重复键、等值查找 | 已规划 |
-
-### 7. 树索引、过滤器与向量索引
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/33-bplus-tree-insert` | 叶子／内部节点、扇出、树高、查找、插入、递归分裂 | 已规划 |
-| `topic/34-bplus-tree-delete` | 删除、下溢、借位、合并、根收缩 | 已规划 |
-| `topic/35-bplus-tree-iterator` | 叶链、范围查询、迭代器 | 已规划 |
-| `topic/36-concurrent-bplus-tree` | Lock 与 Latch 区别、读写 latch、Latch Coupling／Crabbing | 已规划 |
-| `topic/37-bloom-filter` | 概率过滤器、假阳性、无假阴性的适用条件 | 已规划 |
-| `topic/38-vector-search` | 距离度量、精确 Top-K 检索；近似检索的正确性基线 | 已规划 |
-| `topic/39-ivf-index` | 简化 IVF、向量索引、候选裁剪、召回率取舍 | 已规划 |
-
-### 8. 排序与聚合
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/40-external-merge-sort` | 有界内存、生成有序段、K 路归并、磁盘 I/O | 已规划 |
-| `topic/41-sort-aggregation` | 排序分组、COUNT／SUM／AVG／MIN／MAX | 已规划 |
-| `topic/42-hash-aggregation` | 哈希分组、聚合状态、结果生成 | 已规划 |
-
-### 9. Join 算法
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/43-nested-loop-join` | 嵌套循环连接、比较次数 | 已规划 |
-| `topic/44-index-nested-loop-join` | 使用索引探测内表 | 已规划 |
-| `topic/45-sort-merge-join` | 排序归并连接、重复键匹配 | 已规划 |
-| `topic/46-hash-join` | Build／Probe、重复键、构建侧选择 | 已规划 |
-
-### 10. 查询执行引擎
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/47-volcano-execution` | Iterator／Volcano、Init／Next、Scan → Filter → Projection | 已规划 |
-| `topic/48-materialized-execution` | 算子完整物化中间结果、内存开销 | 已规划 |
-| `topic/49-vectorized-execution` | 批量数据、批量算子、选择向量 | 已规划 |
-| `topic/50-pipelines` | Pipeline、Pipeline Breaker、算子执行边界 | 已规划 |
-| `topic/51-access-executors` | SeqScan、IndexScan、访问路径对比 | 已规划 |
-| `topic/52-modification-executors` | Insert、Update、Delete、表／索引维护 | 已规划 |
-| `topic/53-limit-executor` | LIMIT、OFFSET、提前终止 | 已规划 |
-| `topic/54-window-functions` | 分区、排序、窗口；排名和累计聚合的明确子集 | 已规划 |
-
-### 11. 查询优化器
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/55-predicate-pushdown` | 谓词下推、引用列分析、不能下推的情况 | 已规划 |
-| `topic/56-projection-pushdown` | 列裁剪、保留后续算子所需列 | 已规划 |
-| `topic/57-aggregation-pushdown` | 局部／最终聚合、AVG 分解、安全改写条件 | 已规划 |
-| `topic/58-limit-pushdown` | LIMIT 下推合法条件、错误改写反例 | 已规划 |
-| `topic/59-physical-plan-selection` | 逻辑／物理算子选择、等值连接转换为 Hash Join | 已规划 |
-| `topic/60-statistics-estimation` | 统计信息、直方图、选择率、基数估计 | 已规划 |
-| `topic/61-cost-model` | I/O 与 CPU 成本模型、估计值和实测计数对比 | 已规划 |
-| `topic/62-join-ordering` | 连接顺序枚举、动态规划、计划成本比较 | 已规划 |
-
-### 12. 事务与并发控制
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/63-transaction-acid` | 事务状态、提交／中止、转账；区分内存回滚与持久性保证 | 已规划 |
-| `topic/64-conflict-serializability` | Schedule、冲突、优先图、环检测 | 已规划 |
-| `topic/65-two-phase-locking` | S／X 锁、兼容矩阵、升级、2PL、Strict 2PL | 已规划 |
-| `topic/66-deadlocks` | 等待图、死锁检测、牺牲者选择、中止释放 | 已规划 |
-| `topic/67-timestamp-ordering` | 读／写时间戳、顺序检查、事务中止 | 已规划 |
-| `topic/68-optimistic-concurrency-control` | Read／Validate／Write、读写集、冲突验证 | 已规划 |
-| `topic/69-mvcc-versioning` | 时间戳、Undo Log、版本链、历史元组重建 | 已规划 |
-| `topic/70-snapshot-isolation` | 快照可见性、写写冲突、提交检查 | 已规划 |
-| `topic/71-isolation-anomalies` | 隔离级别、脏读、不可重复读、幻读、丢失更新、写偏斜 | 已规划 |
-| `topic/72-serializable-mvcc` | 多版本上的保守串行化验证、阻止写偏斜 | 已规划 |
-
-### 13. WAL 与恢复
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/73-write-ahead-logging` | 日志记录、LSN、日志先行规则、提交持久化 | 已规划 |
-| `topic/74-buffer-recovery-policies` | Steal／No-Steal、Force／No-Force、Undo／Redo 需求 | 已规划 |
-| `topic/75-checkpointing` | 检查点、事务表、脏页表、恢复起点 | 已规划 |
-| `topic/76-redo-undo` | 已提交事务重做、未提交事务撤销、重复恢复 | 已规划 |
-| `topic/77-aries-recovery` | 教学子集的 Analysis／Redo／Undo、PageLSN、CLR、恢复中再次崩溃 | 已规划 |
-
-### 14. 分布式与并行数据库入门
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/78-partitioning` | 哈希／范围分区、路由、数据倾斜 | 已规划 |
-| `topic/79-replication` | 主从复制、同步／异步确认、复制滞后、故障边界 | 已规划 |
-| `topic/80-distributed-transactions` | 两阶段提交、跨节点事务、持久化决策、阻塞问题 | 已规划 |
-| `topic/81-distributed-query` | 数据交换、广播／重分区连接、局部聚合 | 已规划 |
-| `topic/82-parallel-execution` | 分区并行、工作分配、结果合并、OLTP／OLAP 工作负载取舍 | 已规划 |
-
-Bloom Filter、IVF 和两阶段提交是为原始资料中的“过滤器”“向量索引”“分布式事务”选择的具体教学算法，并非原文指定的算法。
-
-## 建议学习顺序
+SQL 字符串不能直接用作数组下标。数据库前端必须先识别词法单元，再判断语法结构，再根据真实 catalog 解析名字和类型，最后选择具体执行机制。本教程真正走完这条路径，不按某条 SQL 字符串返回预制答案。
 
 ```text
-C++ 基础 → 关系模型与 SQL
-                 ↓
-存储布局 → 压缩 → 缓冲池
-                 ↓
-哈希表 → B+Tree → 并发索引 → 过滤器与向量索引
-                 ↓
-排序／聚合／Join → 执行模型 → 查询优化
-                 ↓
-事务基础 → 并发控制 → MVCC 与隔离
-                 ↓
-WAL → 检查点 → 恢复
-                 ↓
-分布式与并行数据库入门
+SQL → lex → Token[] → Parser → Query
+                              ↓ bind + Catalog
+                         LogicalPlan
+                              ↓ lower
+                         PhysicalPlan → execute → Tuple[]
 ```
 
-编号是稳定的目录标识，不是严格的依赖顺序。例如学习 Buffer Pool 前可先读替换策略，学习并发 B+Tree 前应掌握线程同步。每个知识点的 README 会列出精确前置知识。
+## 精确支持的语法
 
-## 每个知识点的使用方式
+```text
+query   := SELECT ( '*' | column (',' column)* )
+           FROM name (',' name)*
+           [ WHERE column '=' operand (AND column '=' operand)* ] [';'] EOF
+column  := name ['.' name]
+operand := column | integer | string | NULL
+name    := [A-Za-z_][A-Za-z_0-9]*  （排除本语法关键字）
+integer := '-'? [0-9]+           （必须在 int64 范围）
+string  := 单引号包围的文本，内部单引号用两个单引号表示
+```
 
-以下是实现分支须提供的统一命令约定；当前 `main` 只有目录与设计，不能执行这些构建命令。
+关键字、未引用名字不区分 ASCII 大小写，统一转小写；字符串内容保持原样、按字节比较。支持空格、TAB、CR、LF。整数与紧随的字母必须分开。不支持注释、加号、浮点、引用标识符、别名、DISTINCT、ORDER BY、JOIN 关键字、OR、括号、算术、不等比较、IS NULL、子查询、多语句或 DML；遇到这些输入明确报错，不悄悄忽略尾部。FROM 逗号表列表表示乘积，WHERE 列等值可表示内连接。重复 FROM 表由于没有别名而拒绝。
+
+## 四个阶段的机制与不变量
+
+### 词法与语法
+
+`lex` 扫描每个字符，保存 token 类型、内容和起始位置。字符串 token 不会被误认为关键字或分号；`'O''Reilly'` 变成文本 `O'Reilly`。未结束字符串、非法字符和整数溢出被拒绝。Parser 是按上述文法写的递归下降解析器：column 处理可选限定名，operand 区分列引用与字面量，parse 处理列表、可选 WHERE 与最后 EOF。最多允许一个末尾分号。
+
+### 名称绑定
+
+Catalog 建表先规范名字、校验所有元组，再发布表；字段数、类型、NULL 许可或规范化后的重复列名失败不会留下部分表。已发布数据只读。绑定按 FROM 顺序串联列：例如 people 有 2 列，teams 有 2 列，则 teams.label 的全局位置是 3。
+
+未限定列必须只匹配一列；people.id 和 teams.id 都存在时，单独 id 是歧义，不是默认选左边。即使表为空，也检查所有引用和比较类型。列与字面量、列与列都必须同类型；NULL 字面量可与任意列比较。SELECT * 按 FROM/原 schema 顺序展开，重复选择同一列合法，结果元数据是 Attribute 数组而非禁止同名列的 Schema。
+
+### 逻辑到物理
+
+LogicalPlan 表达 `Project(columns, Select(predicates, Product(sources)))`，列名已变为整数下标。每个来源持有只读表的值快照，不留下悬空 catalog 引用。`lower` 根据逻辑结构建立真正的算子树：来源变为 SeqScan；多表乘积变为左深 NestedLoopProduct；非空谓词列表变为 Filter；最终投影变为 Gather。没有代价优化或谓词下推，不能把这种确定性降低称为优化器。
+
+PhysicalPlan 的左右孩子由 unique_ptr 拥有。execute 递归调用孩子，扫描复制行，双循环组合左右行，过滤检查已绑定的列，Gather 按指定位置复制字段。计划可重复执行；catalog 离开作用域后仍可执行。AST 和计划结构是教学用内部表示，只执行 Parser/bind/lower 生成的结构，不接受外部反序列化计划。
+
+### Bag、NULL 与顺序
+
+每一步使用 vector，**不去重**。同一行出现两次会被扫描两次，投影也保留两次；两边各两条匹配行会产生四条连接结果。WHERE 等值遇到任意 NULL 得到 UNKNOWN，WHERE 只保留 TRUE；全部谓词通过才保留一行，因此这里的 AND 过滤符合三值逻辑，但没有通用三值表达式求值器。
+
+扫描和嵌套循环顺序在本实现中可重复，仅为了演示稳定；没有 ORDER BY 的 SQL 不承诺结果排序。本实现不把集合代数中 NULL 字面标记相等的规则套到 SQL 上。
+
+## 可复现的具体轨迹
+
+people 为 `(1,DB),(2,DB),(3,NULL)`。输入：
+
+```sql
+SELECT team FROM people WHERE team = 'DB';
+```
+
+Parser 得到一个投影列、一张来源表、一个等值谓词；Binder 将 team 两处均绑定到位置 1，确认右侧为 Text；lower 建立 Gather → Filter → SeqScan。扫描三行，过滤第三行 UNKNOWN，投影两次复制 DB，最终仍为两行，不是一行。随后 demo 查询不存在的 missing 展示绑定失败。
+
+实际输出：
+
+```text
+logical: Project[1](Select[1](Product[people]))
+physical: Gather(Filter(SeqScan))
+DB
+DB
+rows=2
+rejected: unknown column: missing
+```
+
+多表例子 `SELECT people.id, teams.label FROM people, teams WHERE people.id=teams.id` 会得到 `Gather(Filter(NestedLoopProduct(SeqScan,SeqScan)))`。两张表的 id=2 各出现两次时输出四行，测试检查精确结果。
+
+## 源码导读与测试
+
+`src/sql.h` 按词法、Parser、Catalog、bind、lower/explain、execute 排列。先看 Query 中字符串列引用与 BoundEquality 中数值下标的区别，再跟随 lower 的树构造，最后看 execute。`src/demo.cpp` 输出由真实计划生成。`tests/tests.cpp` 独立于 demo，使用不会在 Release 消失的 check/rejects：覆盖大小写、重复输入与投影、AND、转义和空文本、int64 两端/溢出、NULL、限定列/歧义、错类型、空表、尾部垃圾、多语句与不支持语法、物理算子结构、重复执行和快照生命周期。错误返回非零。
 
 ```sh
-# 仅对总目录中已标记为“已验证”的分支执行
-# git switch topic/NN-name
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
+cmake --build build -j2
 ctest --test-dir build --output-on-failure
 ./build/demo
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release -j2
+ctest --test-dir build-release --output-on-failure
+./build-release/demo
 ```
 
-测试必须在 Debug 与 Release 构建下都有效，不得依赖会被 NDEBUG 删除的断言作为唯一正确性检查。较复杂知识点可以提供额外命令，但应保留上述基本入口。
+两种模式应各通过一个 CTest，demo 如上。若 macOS 的默认 AppleClang 找不到标准库头，给两次 cmake 配置命令都附加 `-DCMAKE_CXX_FLAGS="-isystem $(xcrun --show-sdk-path)/usr/include/c++/v1"`。本机使用该参数验证，不修改系统、不安装依赖、不硬编码 SDK 路径；编辑器缺少同样路径导致的 std/cstdint 诊断应与实际编译区分。
 
-## 原始资料与适用范围
+## 成本、失败与局限
 
-- 原始 `spec.md` 保留不变，作为需求来源。
-- 原文引用 Fall 2025、Spring 2026 与 Fall 2026，不构成统一的课程版本锁定。
-- Page 大小等具体参数由对应实现说明，不将某个 BusTub 版本的参数说成通用规定。
-- 概念联系 PostgreSQL、DuckDB、TiDB、Milvus 等系统，不表示这些系统使用完全相同的实现。
-- 不声称生产可用、不提供官方课程评分保证，也不以进程崩溃测试代替真实断电安全证明。
+SQL 长度 L，词法/语法 O(L) 时间和空间；列数 k、引用数 q，线性名字绑定 O(qk)，另有表名查找和源表快照复制。单表 n 行、p 个谓词、投影宽度 w：过滤 O(np)，投影 O(rw)，不计文本比较成本。多表中间行数为各来源行数的乘积 P，全量物化最坏 O(Pk) 时间/空间，再加过滤 O(Pp) 和结果 O(rw)。逻辑与物理各复制来源数据以换取独立生命周期；无磁盘 I/O。大表应改成流式算子和哈希连接，本教程刻意暴露乘积爆炸成本。
+
+没有 SQL 写入、索引、持久化、事务、并发、计划缓存、别名、自连接或完整 SQL 类型系统。递归执行的深度随 FROM 表数增加；不对恶意超大查询提供资源配额，适用小型本地教学输入而非网络服务。所有查询只读，词法、绑定、执行失败不会修改 catalog；内存分配失败正常传播异常。
