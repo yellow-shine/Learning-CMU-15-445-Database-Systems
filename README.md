@@ -14,11 +14,11 @@
 
 ## 当前状态
 
-**82 个知识点中，10 个已验证（01–10）；其余 72 个尚未完成验收。接下来继续存储引擎模块。**
+**82 个知识点中，21 个已验证（01–21）；其余 61 个尚未完成验收。Buffer Pool 的 22–27 已提交候选实现，尚待独立审查。**
 
-C++ 基础、关系模型与 SQL 的实现、中文讲解、Debug／Release 测试和独立源码审查均通过。见[模块 1 验收记录](docs/validation/module-01-cpp.md)和[模块 2 验收记录](docs/validation/module-02-relational-sql.md)。
+C++ 基础、关系模型与 SQL、存储引擎、压缩的实现、中文讲解、Debug／Release 测试和独立源码审查均通过。见[模块 1](docs/validation/module-01-cpp.md)、[模块 2](docs/validation/module-02-relational-sql.md)、[模块 3–4 验收记录](docs/validation/modules-03-04-storage-compression.md)。列存越界问题已修复，并通过回归测试、ASan 和独立复审。
 
-11、12、13、18、19 的候选提交已独立通过 Debug／Release 构建、CTest 和 demo 检查，源码审查仍待完成。见[恢复阶段验证记录](docs/validation/recovery-build-check.md)。
+早期候选构建检查见[恢复阶段验证记录](docs/validation/recovery-build-check.md)，最终验收以各模块记录中的精确提交为准。
 
 表中的分支名是交付清单，不代表全部分支已经存在。候选分支的开发者测试通过后仍需独立审查；只有实现、讲解及测试验收通过并提交后，才标记为“已验证”。
 
@@ -48,33 +48,33 @@ C++ 基础、关系模型与 SQL 的实现、中文讲解、Debug／Release 测�
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/11-disk-page-io` | 磁盘导向数据库、文件、固定大小 Page、Page ID；页读写 | 已规划 |
-| `topic/12-tuple-layout` | 元组序列化、定长／变长字段、NULL 位图、元数据 | 已规划 |
-| `topic/13-slotted-page` | 页头、Slot、RID、空闲空间；页内增删改查与整理 | 已规划 |
-| `topic/14-heap-file` | 堆表、跨页存储、RID 定位、堆扫描 | 已规划 |
-| `topic/15-row-store` | NSM 行存布局、整行访问 | 已规划 |
-| `topic/16-column-store` | DSM 列存布局、列扫描、晚物化基础 | 已规划 |
-| `topic/17-pax-layout` | PAX 页内分列、行列混合布局的取舍 | 已规划 |
+| `topic/11-disk-page-io` | 磁盘导向数据库、文件、固定大小 Page、Page ID；页读写 | 已验证 |
+| `topic/12-tuple-layout` | 元组序列化、定长／变长字段、NULL 位图、元数据 | 已验证 |
+| `topic/13-slotted-page` | 页头、Slot、RID、空闲空间；页内增删改查与整理 | 已验证 |
+| `topic/14-heap-file` | 堆表、跨页存储、RID 定位、堆扫描 | 已验证 |
+| `topic/15-row-store` | NSM 行存布局、整行访问 | 已验证 |
+| `topic/16-column-store` | DSM 列存布局、列扫描、晚物化基础 | 已验证 |
+| `topic/17-pax-layout` | PAX 页内分列、行列混合布局的取舍 | 已验证 |
 
 ### 4. 数据压缩
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/18-rle` | 游程编码、解码、适用数据分布 | 已规划 |
-| `topic/19-bit-packing` | 位宽计算、整数打包与解包 | 已规划 |
-| `topic/20-dictionary-encoding` | 字典构建、编码、解码、编码上的等值过滤 | 已规划 |
-| `topic/21-delta-encoding` | 差分编码、还原、边界处理 | 已规划 |
+| `topic/18-rle` | 游程编码、解码、适用数据分布 | 已验证 |
+| `topic/19-bit-packing` | 位宽计算、整数打包与解包 | 已验证 |
+| `topic/20-dictionary-encoding` | 字典构建、编码、解码、编码上的等值过滤 | 已验证 |
+| `topic/21-delta-encoding` | 差分编码、还原、边界处理 | 已验证 |
 
 ### 5. Buffer Pool
 
 | 分支 | 讲解与实现 | 状态 |
 | --- | --- | --- |
-| `topic/22-buffer-pool` | Page 与 Frame、页表、Pin／Unpin、Dirty、Flush、Eviction | 已规划 |
-| `topic/23-lru` | LRU 替换策略、访问轨迹实验 | 已规划 |
-| `topic/24-clock` | Clock 替换策略、引用位 | 已规划 |
-| `topic/25-lru-k` | LRU-K、访问历史、淘汰选择 | 已规划 |
-| `topic/26-disk-scheduler` | 异步磁盘请求、后台线程、完成通知、错误传播 | 已规划 |
-| `topic/27-page-guard` | RAII 页守卫、Pin 生命周期、读写保护 | 已规划 |
+| `topic/22-buffer-pool` | Page 与 Frame、页表、Pin／Unpin、Dirty、Flush、Eviction | 实现中（待审查） |
+| `topic/23-lru` | LRU 替换策略、访问轨迹实验 | 实现中（待审查） |
+| `topic/24-clock` | Clock 替换策略、引用位 | 实现中（待审查） |
+| `topic/25-lru-k` | LRU-K、访问历史、淘汰选择 | 实现中（待审查） |
+| `topic/26-disk-scheduler` | 异步磁盘请求、后台线程、完成通知、错误传播 | 实现中（待审查） |
+| `topic/27-page-guard` | RAII 页守卫、Pin 生命周期、读写保护 | 实现中（待审查） |
 
 ### 6. 哈希表
 
