@@ -61,8 +61,11 @@ class BufferPool {
   std::size_t pins(std::size_t id) const { std::lock_guard<std::mutex> lock(mutex_); return frames_.at(table_.at(id)).pins; }
  private:
   void flush_frame(Frame& frame) {
+    // Never wait for a page latch while holding metadata: nested guard drop needs it.
+    if (frame.pins) throw std::runtime_error("cannot flush pinned frame");
     if (frame.dirty) {
-      std::shared_lock<std::shared_mutex> page_lock(frame.latch);
+      std::shared_lock<std::shared_mutex> page_lock(frame.latch, std::try_to_lock);
+      if (!page_lock.owns_lock()) throw std::runtime_error("cannot flush busy frame");
       disk_.write(*frame.page_id, frame.data); frame.dirty = false;
     }
   }

@@ -2,8 +2,40 @@
 #include "temp_file.h"
 #include "check.h"
 #include <future>
+#include <cstdlib>
+#include <iostream>
 #include <type_traits>
+// A timeout must exit directly: an async future destructor would wait on the deadlock.
+void flush_nested_regression(bool all, bool acquire_after_flush) {
+  TempFile file(2); Disk disk(file.path()); BufferPool pool(disk, 2);
+  { WritePageGuard dirty(pool, 0); dirty.mutable_data()[0] = 'D'; }
+  {
+    WritePageGuard outer(pool, 0);
+    ReadPageGuard inner;
+    if (!acquire_after_flush) inner = ReadPageGuard(pool, 1);
+    auto flush = std::async(std::launch::async, [&] {
+      try { if (all) pool.flush_all(); else pool.flush(0); }
+      catch (const std::runtime_error&) { return true; }
+      return false;
+    });
+    if (flush.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
+      std::cerr << "flush blocked on nested guard\n";
+      std::_Exit(2);
+    }
+    CHECK(flush.get());
+    if (acquire_after_flush) inner = ReadPageGuard(pool, 1);
+    inner.drop(); // Reverse-order cleanup must remain possible.
+    CHECK(pool.pins(1) == 0);
+    CHECK(disk.read(0)[0] == 0); // Rejected flush did not write or clear dirty.
+  }
+  CHECK(pool.pins(0) == 0);
+  pool.flush_all(); CHECK(disk.read(0)[0] == 'D');
+  { ReadPageGuard clean(pool, 0); rejects([&] { pool.flush(0); }); }
+}
 int main() {
+  for (bool all : {false, true})
+    for (bool acquire_after_flush : {false, true})
+      flush_nested_regression(all, acquire_after_flush);
   static_assert(!std::is_copy_constructible_v<ReadPageGuard>);
   static_assert(std::is_nothrow_move_constructible_v<WritePageGuard>);
   TempFile file(3); Disk disk(file.path()); BufferPool pool(disk, 2);

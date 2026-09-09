@@ -29,15 +29,15 @@ demo 输出 `guard reload: G` 和 `pins after scope: 0`。测试另有写后抛�
 
 ## 源码导读与测试
 
-`src/page_guard.h` 是重点：模板布尔参数选择 unique_lock 或 shared_lock；mutable_data 的 static_assert 禁止读 Guard 写入。`src/buffer_pool.h` 的 fetch 只保护元数据，不在返回前持页锁；flush 在元数据锁内取得共享页锁，防止与正在写的 Guard 竞争字节。`src/disk.h` 为真实固定页 I/O，`temp_file.h` 只服务 demo 和独立测试。
+`src/page_guard.h` 是重点：模板布尔参数选择 unique_lock 或 shared_lock；mutable_data 的 static_assert 禁止读 Guard 写入。`src/buffer_pool.h` 的 fetch 只保护元数据，不在返回前持页锁；flush 在元数据锁内先拒绝 pinned Frame（即使页是 clean），再以 try_lock 获取共享页锁；busy 时也抛 runtime_error，绝不持元数据锁等待页锁。拒绝不改变该页 dirty，释放 Guard 后可重试。flush_all 遇到首个 pinned/busy 页即失败，之前的页可能已写回，不提供批量原子性。`src/disk.h` 为真实固定页 I/O，`temp_file.h` 只服务 demo 和独立测试。
 
-`tests/tests.cpp` 验证移动构造／赋值／自移动、空态、重复 drop、异常展开、dirty 保留、全 pinned 失败后不泄漏、读锁并存和独占互斥。真实 async 线程用 future/promise 协调；try_lock 检查持锁时排他性，阻塞 writer 在 reader 释放后完成。只读 Guard 释放后移走磁盘文件再 flush 不触发写，证明没有误标 dirty。测试不靠 sleep 或 Release 会消失的 assert。
+`tests/tests.cpp` 验证移动构造／赋值／自移动、空态、重复 drop、异常展开、dirty 保留、全 pinned 失败后不泄漏、读锁并存和独占互斥。真实 async 线程用 future/promise 协调；try_lock 检查持锁时排他性，阻塞 writer 在 reader 释放后完成。只读 Guard 释放后移走磁盘文件再 flush 不触发写，证明没有误标 dirty。并发 flush/flush_all 回归在持有页 0 writer 时要求两秒内拒绝，再获取或逆序释放页 1 reader；超时直接退出，避免 future 析构再次等待死锁。释放全部 Guard 后重试并读盘验证 dirty 未丢失。测试不靠 sleep 或 Release 会消失的 assert。
 
 ## 成本与约束
 
 命中与 unpin 期望 O(1)，缺页选择 O(F)，空间 O(F×256)；Guard 固定大小，不分配页副本。页锁等待时间取决于竞争，shared_mutex 不保证公平。元数据锁覆盖 I/O，吞吐受限；本分支教学重点是所有权而非高并发 BufferPool。
 
-**调用约束**：Pool 必须比 Guard 活得久，Disk 比 Pool 活得久。持锁 Guard 只能在获取锁的同一线程移动和析构，不能把它搬到另一线程解锁。不可在同一线程对同页递归获取 Guard、升级读锁，或持有 Guard 调用 flush／flush_all；这些可能递归锁死。跨页嵌套获取必须由调用者固定顺序。底层 fetch/unpin 只作为低层接口，不能绕过 Guard 手动 unpin 它持有的 pin，也不能无页锁访问字节；不要让 data 引用逃出作用域。
+**调用约束**：Pool 必须比 Guard 活得久，Disk 比 Pool 活得久。持锁 Guard 只能在获取锁的同一线程移动和析构，不能把它搬到另一线程解锁。不可在同一线程对同页递归获取 Guard、升级读锁，；这些可能递归锁死。flush／flush_all 不等待 pinned/busy 页，调用者应在 Guard 释放后重试。跨页嵌套获取必须由调用者固定顺序。底层 fetch/unpin 只作为低层接口，不能绕过 Guard 手动 unpin 它持有的 pin，也不能无页锁访问字节；不要让 data 引用逃出作用域。
 
 没有后台刷新、WAL、页分配、自动析构写回和崩溃恢复。修改由显式 flush 或淘汰写回，流 flush 不等于 fsync，不保证断电持久性。构造锁失败的回滚在源码显式处理，但标准库没有可移植的强制锁失败注入接口，测试覆盖实际用户异常和 fetch 失败，不伪造该系统故障。
 
