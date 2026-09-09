@@ -1,218 +1,61 @@
-# CMU 15-445 数据库内核：独立教学实现
+# 27：Page Guard —— 把 pin 和读写锁变成作用域资源
 
-依据 [`spec.md`](spec.md) 拆解数据库内核知识，用 **C++17 独立教学实现**解释其机制。课程介绍中的重复内容与 BusTub P0–P4 项目内容已去重；本仓库不依赖 BusTub，也不是任何单一学期的官方项目答案。
+## 问题与前置知识
 
-## 已确认的组织方式
+手动 fetch/unpin 容易在异常、早退、移动时漏释放，也容易释放两次。Guard 用 RAII 表达“持有此页且可以读／写”的生命周期，处于缓冲池 API 层。先了解析构、移动语义、shared_mutex 与 22 缓冲池。本分支附带 22 的 Disk、TempFile、BufferPool 支撑快照，并为 BufferPool 增加元数据锁与每 Frame 页锁；可独立构建。
 
-- 一个可独立学习、验证的算法或机制，对应一个 `topic/NN-name` Git 分支。
-- 各分支独立构建，包含中文讲解、可运行实现、演示和测试；不需要切换其他分支取代码。
-- 紧密关联的概念合并讲解，例如 Page ID、Slot ID、RID；具有独立机制的算法分别实现。
-- `main` 保留本目录、原始资料和设计文档，不累积全部知识点实现。
-- 实现目标为“教学级机制完整”，不是生产级数据库；简化、适用范围和不支持的能力必须写清楚。
+## 获取、移动、释放
 
-设计与验收细节见 [`docs/superpowers/specs/2026-09-09-database-topics-design.md`](docs/superpowers/specs/2026-09-09-database-topics-design.md)。
+构造先 fetch 增加 pin，再获取页锁。读 Guard 持共享锁，只返回 const Page；写 Guard 持独占锁，mutable_data 在暴露可写引用时保守登记 dirty。若获取锁抛异常，构造的 catch 撤销 pin。
 
-## 当前状态
+移动转移 pool 指针、Frame 指针、锁所有权、dirty 标记，源变空，不再 unpin；移动赋值先释放目标原来持有的页。自移动不改变资源。默认构造和显式 drop 后也是空状态，访问空 Guard 抛 logic_error，重复 drop 无副作用。
 
-**82 个知识点已规划；0 个实现完成；尚未创建知识点分支。**
+析构／drop **先解页锁，再 unpin 并合并 dirty**。反过来会让仍锁住的页变成候选，并可能形成元数据锁／页锁逆序死锁。只要 pin 尚在，Frame 就不会被复用；页表与 pin/dirty 都在元数据锁下更新。Guard 与 BufferPool 不可复制。
 
-表中的分支名是计划名称，不代表分支已经存在。只有实现、讲解及测试验收通过并提交后，才标记为“已验证”。
+## 一条真实轨迹
 
-## 知识点总目录
+容量 1，磁盘两页零值：
 
-### 1. C++ 基础
+|作用域|资源状态|结果|
+|---|---|---|
+|WritePageGuard(0)|pin=1，独占锁|mutable_data 写 G|
+|写作用域退出|解锁，pin=0，dirty=true|可淘汰|
+|ReadPageGuard(1)|淘汰 0，写回 G|页 1 被 pin|
+|页 1 作用域退出|pin=0|可重载 0|
+|ReadPageGuard(0)|读盘获得 G|共享读|
+|最后退出|页 0 pin=0|不会重复 unpin|
 
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/01-cpp-raii` | 对象生命周期、RAII、资源释放；文件资源守卫 | 已规划 |
-| `topic/02-cpp-smart-pointers` | unique_ptr、shared_ptr、weak_ptr、所有权与循环引用 | 已规划 |
-| `topic/03-cpp-move-semantics` | 左值／右值、移动构造、移动赋值；可移动缓冲区 | 已规划 |
-| `topic/04-cpp-templates` | 模板、泛型；简单的泛型数据库组件 | 已规划 |
-| `topic/05-cpp-stl` | 容器、迭代器、算法、迭代器失效；数据库场景示例 | 已规划 |
-| `topic/06-cpp-threading` | 线程、互斥锁、条件变量、读写锁；生产者／消费者队列 | 已规划 |
+demo 输出 `guard reload: G` 和 `pins after scope: 0`。测试另有写后抛用户异常路径，修改仍登记 dirty；移动赋值覆盖一个已持有的 Guard 时，旧页 pin 减一，新页 pin 不增加。
 
-### 2. 关系模型与 SQL 逻辑层
+## 源码导读与测试
 
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/07-relational-model` | Relation、Tuple、Attribute、Schema；类型化关系与元组 | 已规划 |
-| `topic/08-relational-constraints` | 主键、外键、非空、检查约束；约束验证 | 已规划 |
-| `topic/09-relational-algebra` | 选择、投影、并、交、差、笛卡尔积、连接；集合语义关系代数 | 已规划 |
-| `topic/10-sql-planning` | SQL、Parser、Binder、逻辑计划、物理计划；限定语法范围的查询转换 | 已规划 |
+`src/page_guard.h` 是重点：模板布尔参数选择 unique_lock 或 shared_lock；mutable_data 的 static_assert 禁止读 Guard 写入。`src/buffer_pool.h` 的 fetch 只保护元数据，不在返回前持页锁；flush 在元数据锁内取得共享页锁，防止与正在写的 Guard 竞争字节。`src/disk.h` 为真实固定页 I/O，`temp_file.h` 只服务 demo 和独立测试。
 
-### 3. 存储引擎
+`tests/tests.cpp` 验证移动构造／赋值／自移动、空态、重复 drop、异常展开、dirty 保留、全 pinned 失败后不泄漏、读锁并存和独占互斥。真实 async 线程用 future/promise 协调；try_lock 检查持锁时排他性，阻塞 writer 在 reader 释放后完成。只读 Guard 释放后移走磁盘文件再 flush 不触发写，证明没有误标 dirty。测试不靠 sleep 或 Release 会消失的 assert。
 
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/11-disk-page-io` | 磁盘导向数据库、文件、固定大小 Page、Page ID；页读写 | 已规划 |
-| `topic/12-tuple-layout` | 元组序列化、定长／变长字段、NULL 位图、元数据 | 已规划 |
-| `topic/13-slotted-page` | 页头、Slot、RID、空闲空间；页内增删改查与整理 | 已规划 |
-| `topic/14-heap-file` | 堆表、跨页存储、RID 定位、堆扫描 | 已规划 |
-| `topic/15-row-store` | NSM 行存布局、整行访问 | 已规划 |
-| `topic/16-column-store` | DSM 列存布局、列扫描、晚物化基础 | 已规划 |
-| `topic/17-pax-layout` | PAX 页内分列、行列混合布局的取舍 | 已规划 |
+## 成本与约束
 
-### 4. 数据压缩
+命中与 unpin 期望 O(1)，缺页选择 O(F)，空间 O(F×256)；Guard 固定大小，不分配页副本。页锁等待时间取决于竞争，shared_mutex 不保证公平。元数据锁覆盖 I/O，吞吐受限；本分支教学重点是所有权而非高并发 BufferPool。
 
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/18-rle` | 游程编码、解码、适用数据分布 | 已规划 |
-| `topic/19-bit-packing` | 位宽计算、整数打包与解包 | 已规划 |
-| `topic/20-dictionary-encoding` | 字典构建、编码、解码、编码上的等值过滤 | 已规划 |
-| `topic/21-delta-encoding` | 差分编码、还原、边界处理 | 已规划 |
+**调用约束**：Pool 必须比 Guard 活得久，Disk 比 Pool 活得久。持锁 Guard 只能在获取锁的同一线程移动和析构，不能把它搬到另一线程解锁。不可在同一线程对同页递归获取 Guard、升级读锁，或持有 Guard 调用 flush／flush_all；这些可能递归锁死。跨页嵌套获取必须由调用者固定顺序。底层 fetch/unpin 只作为低层接口，不能绕过 Guard 手动 unpin 它持有的 pin，也不能无页锁访问字节；不要让 data 引用逃出作用域。
 
-### 5. Buffer Pool
+没有后台刷新、WAL、页分配、自动析构写回和崩溃恢复。修改由显式 flush 或淘汰写回，流 flush 不等于 fsync，不保证断电持久性。构造锁失败的回滚在源码显式处理，但标准库没有可移植的强制锁失败注入接口，测试覆盖实际用户异常和 fetch 失败，不伪造该系统故障。
 
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/22-buffer-pool` | Page 与 Frame、页表、Pin／Unpin、Dirty、Flush、Eviction | 已规划 |
-| `topic/23-lru` | LRU 替换策略、访问轨迹实验 | 已规划 |
-| `topic/24-clock` | Clock 替换策略、引用位 | 已规划 |
-| `topic/25-lru-k` | LRU-K、访问历史、淘汰选择 | 已规划 |
-| `topic/26-disk-scheduler` | 异步磁盘请求、后台线程、完成通知、错误传播 | 已规划 |
-| `topic/27-page-guard` | RAII 页守卫、Pin 生命周期、读写保护 | 已规划 |
+## 构建与验证
 
-### 6. 哈希表
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/28-linear-probing` | 静态哈希、开放寻址、冲突探测、删除标记 | 已规划 |
-| `topic/29-robin-hood-hashing` | 探测距离、交换规则、删除处理 | 已规划 |
-| `topic/30-cuckoo-hashing` | 多候选位置、驱逐链、重建 | 已规划 |
-| `topic/31-extendible-hashing` | 动态哈希、目录、全局／局部深度、桶分裂 | 已规划 |
-| `topic/32-hash-index` | Key → RID 索引、重复键、等值查找 | 已规划 |
-
-### 7. 树索引、过滤器与向量索引
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/33-bplus-tree-insert` | 叶子／内部节点、扇出、树高、查找、插入、递归分裂 | 已规划 |
-| `topic/34-bplus-tree-delete` | 删除、下溢、借位、合并、根收缩 | 已规划 |
-| `topic/35-bplus-tree-iterator` | 叶链、范围查询、迭代器 | 已规划 |
-| `topic/36-concurrent-bplus-tree` | Lock 与 Latch 区别、读写 latch、Latch Coupling／Crabbing | 已规划 |
-| `topic/37-bloom-filter` | 概率过滤器、假阳性、无假阴性的适用条件 | 已规划 |
-| `topic/38-vector-search` | 距离度量、精确 Top-K 检索；近似检索的正确性基线 | 已规划 |
-| `topic/39-ivf-index` | 简化 IVF、向量索引、候选裁剪、召回率取舍 | 已规划 |
-
-### 8. 排序与聚合
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/40-external-merge-sort` | 有界内存、生成有序段、K 路归并、磁盘 I/O | 已规划 |
-| `topic/41-sort-aggregation` | 排序分组、COUNT／SUM／AVG／MIN／MAX | 已规划 |
-| `topic/42-hash-aggregation` | 哈希分组、聚合状态、结果生成 | 已规划 |
-
-### 9. Join 算法
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/43-nested-loop-join` | 嵌套循环连接、比较次数 | 已规划 |
-| `topic/44-index-nested-loop-join` | 使用索引探测内表 | 已规划 |
-| `topic/45-sort-merge-join` | 排序归并连接、重复键匹配 | 已规划 |
-| `topic/46-hash-join` | Build／Probe、重复键、构建侧选择 | 已规划 |
-
-### 10. 查询执行引擎
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/47-volcano-execution` | Iterator／Volcano、Init／Next、Scan → Filter → Projection | 已规划 |
-| `topic/48-materialized-execution` | 算子完整物化中间结果、内存开销 | 已规划 |
-| `topic/49-vectorized-execution` | 批量数据、批量算子、选择向量 | 已规划 |
-| `topic/50-pipelines` | Pipeline、Pipeline Breaker、算子执行边界 | 已规划 |
-| `topic/51-access-executors` | SeqScan、IndexScan、访问路径对比 | 已规划 |
-| `topic/52-modification-executors` | Insert、Update、Delete、表／索引维护 | 已规划 |
-| `topic/53-limit-executor` | LIMIT、OFFSET、提前终止 | 已规划 |
-| `topic/54-window-functions` | 分区、排序、窗口；排名和累计聚合的明确子集 | 已规划 |
-
-### 11. 查询优化器
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/55-predicate-pushdown` | 谓词下推、引用列分析、不能下推的情况 | 已规划 |
-| `topic/56-projection-pushdown` | 列裁剪、保留后续算子所需列 | 已规划 |
-| `topic/57-aggregation-pushdown` | 局部／最终聚合、AVG 分解、安全改写条件 | 已规划 |
-| `topic/58-limit-pushdown` | LIMIT 下推合法条件、错误改写反例 | 已规划 |
-| `topic/59-physical-plan-selection` | 逻辑／物理算子选择、等值连接转换为 Hash Join | 已规划 |
-| `topic/60-statistics-estimation` | 统计信息、直方图、选择率、基数估计 | 已规划 |
-| `topic/61-cost-model` | I/O 与 CPU 成本模型、估计值和实测计数对比 | 已规划 |
-| `topic/62-join-ordering` | 连接顺序枚举、动态规划、计划成本比较 | 已规划 |
-
-### 12. 事务与并发控制
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/63-transaction-acid` | 事务状态、提交／中止、转账；区分内存回滚与持久性保证 | 已规划 |
-| `topic/64-conflict-serializability` | Schedule、冲突、优先图、环检测 | 已规划 |
-| `topic/65-two-phase-locking` | S／X 锁、兼容矩阵、升级、2PL、Strict 2PL | 已规划 |
-| `topic/66-deadlocks` | 等待图、死锁检测、牺牲者选择、中止释放 | 已规划 |
-| `topic/67-timestamp-ordering` | 读／写时间戳、顺序检查、事务中止 | 已规划 |
-| `topic/68-optimistic-concurrency-control` | Read／Validate／Write、读写集、冲突验证 | 已规划 |
-| `topic/69-mvcc-versioning` | 时间戳、Undo Log、版本链、历史元组重建 | 已规划 |
-| `topic/70-snapshot-isolation` | 快照可见性、写写冲突、提交检查 | 已规划 |
-| `topic/71-isolation-anomalies` | 隔离级别、脏读、不可重复读、幻读、丢失更新、写偏斜 | 已规划 |
-| `topic/72-serializable-mvcc` | 多版本上的保守串行化验证、阻止写偏斜 | 已规划 |
-
-### 13. WAL 与恢复
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/73-write-ahead-logging` | 日志记录、LSN、日志先行规则、提交持久化 | 已规划 |
-| `topic/74-buffer-recovery-policies` | Steal／No-Steal、Force／No-Force、Undo／Redo 需求 | 已规划 |
-| `topic/75-checkpointing` | 检查点、事务表、脏页表、恢复起点 | 已规划 |
-| `topic/76-redo-undo` | 已提交事务重做、未提交事务撤销、重复恢复 | 已规划 |
-| `topic/77-aries-recovery` | 教学子集的 Analysis／Redo／Undo、PageLSN、CLR、恢复中再次崩溃 | 已规划 |
-
-### 14. 分布式与并行数据库入门
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/78-partitioning` | 哈希／范围分区、路由、数据倾斜 | 已规划 |
-| `topic/79-replication` | 主从复制、同步／异步确认、复制滞后、故障边界 | 已规划 |
-| `topic/80-distributed-transactions` | 两阶段提交、跨节点事务、持久化决策、阻塞问题 | 已规划 |
-| `topic/81-distributed-query` | 数据交换、广播／重分区连接、局部聚合 | 已规划 |
-| `topic/82-parallel-execution` | 分区并行、工作分配、结果合并、OLTP／OLAP 工作负载取舍 | 已规划 |
-
-Bloom Filter、IVF 和两阶段提交是为原始资料中的“过滤器”“向量索引”“分布式事务”选择的具体教学算法，并非原文指定的算法。
-
-## 建议学习顺序
-
-```text
-C++ 基础 → 关系模型与 SQL
-                 ↓
-存储布局 → 压缩 → 缓冲池
-                 ↓
-哈希表 → B+Tree → 并发索引 → 过滤器与向量索引
-                 ↓
-排序／聚合／Join → 执行模型 → 查询优化
-                 ↓
-事务基础 → 并发控制 → MVCC 与隔离
-                 ↓
-WAL → 检查点 → 恢复
-                 ↓
-分布式与并行数据库入门
-```
-
-编号是稳定的目录标识，不是严格的依赖顺序。例如学习 Buffer Pool 前可先读替换策略，学习并发 B+Tree 前应掌握线程同步。每个知识点的 README 会列出精确前置知识。
-
-## 每个知识点的使用方式
-
-以下是实现分支须提供的统一命令约定；当前 `main` 只有目录与设计，不能执行这些构建命令。
+仅需 C++17、CMake 和标准线程库，无第三方依赖。回到总目录：`git show main:README.md`。
 
 ```sh
-# 仅对总目录中已标记为“已验证”的分支执行
-# git switch topic/NN-name
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
+cmake --build build -j2
 ctest --test-dir build --output-on-failure
 ./build/demo
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release -j2
+ctest --test-dir build-release --output-on-failure
+./build-release/demo
 ```
 
-测试必须在 Debug 与 Release 构建下都有效，不得依赖会被 NDEBUG 删除的断言作为唯一正确性检查。较复杂知识点可以提供额外命令，但应保留上述基本入口。
-
-## 原始资料与适用范围
-
-- 原始 `spec.md` 保留不变，作为需求来源。
-- 原文引用 Fall 2025、Spring 2026 与 Fall 2026，不构成统一的课程版本锁定。
-- Page 大小等具体参数由对应实现说明，不将某个 BusTub 版本的参数说成通用规定。
-- 概念联系 PostgreSQL、DuckDB、TiDB、Milvus 等系统，不表示这些系统使用完全相同的实现。
-- 不声称生产可用、不提供官方课程评分保证，也不以进程崩溃测试代替真实断电安全证明。
+若 macOS 的 AppleClang 报标准头文件找不到，在两条配置命令中各附加：
+`-DCMAKE_CXX_FLAGS="-isystem $(xcrun --show-sdk-path)/usr/include/c++/v1"`。
+这是本机 SDK 搜索路径排错，不是源码依赖。CTest 失败抛异常返回非零，Release 不依赖 assert；测试超时 20 秒。
