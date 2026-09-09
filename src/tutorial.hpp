@@ -18,6 +18,11 @@ class Bank {
   explicit Bank(std::vector<std::int64_t> balances) : balances_(std::move(balances)) {
     for (auto b : balances_) if (b < 0) throw std::invalid_argument("negative balance");
   }
+  // Transactions retain a reference: the bank must keep a stable identity.
+  Bank(const Bank&) = delete;
+  Bank& operator=(const Bank&) = delete;
+  Bank(Bank&&) = delete;
+  Bank& operator=(Bank&&) = delete;
   std::int64_t balance(std::size_t id) const { return balances_.at(id); }
  private:
   std::vector<std::int64_t> balances_;

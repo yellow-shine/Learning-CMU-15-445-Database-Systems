@@ -1,6 +1,11 @@
 #include "tutorial.hpp"
 #include <iostream>
+#include <type_traits>
 using namespace tutorial;
+static_assert(!std::is_copy_constructible_v<Bank>);
+static_assert(!std::is_copy_assignable_v<Bank>);
+static_assert(!std::is_move_constructible_v<Bank>);
+static_assert(!std::is_move_assignable_v<Bank>);
 void check(bool ok) { if (!ok) throw std::runtime_error("check failed"); }
 template<class F> void rejects(F f) { bool caught=false; try { f(); } catch(const std::exception&) { caught=true; } check(caught); }
 int main() { try {
