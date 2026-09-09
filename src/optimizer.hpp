@@ -2,6 +2,8 @@
 #include "plan.hpp"
 namespace db {
 inline P select_physical(P p){
+ // LIMIT selects a prefix: changing hash iteration order can change its result bag.
+ if(p->kind==Kind::Limit)return p;
  auto q=std::make_shared<Plan>(*p);
  if(p->left)q->left=select_physical(p->left);
  if(p->right)q->right=select_physical(p->right);
