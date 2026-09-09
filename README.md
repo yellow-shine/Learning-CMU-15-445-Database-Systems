@@ -1,218 +1,75 @@
-# CMU 15-445 数据库内核：独立教学实现
+# 76 · Redo / Undo：重做已提交，撤销未提交
 
-依据 [`spec.md`](spec.md) 拆解数据库内核知识，用 **C++17 独立教学实现**解释其机制。课程介绍中的重复内容与 BusTub P0–P4 项目内容已去重；本仓库不依赖 BusTub，也不是任何单一学期的官方项目答案。
+在 Steal + No-Force 下，磁盘可能既多了 loser 的值，又少了 winner 的值。本教程实现真实 WAL 文件、正序 Redo、逆序 before-image Undo、恢复完成标记与重复恢复。前置知识是 73 的 WAL、74 的缓冲策略。总目录见 `main:README.md`。文件 I/O 和四页存储是本模块 73 的源码快照；本主题独立构建，不依赖其他 checkout。
 
-## 已确认的组织方式
+## 算法与不变量
 
-- 一个可独立学习、验证的算法或机制，对应一个 `topic/NN-name` Git 分支。
-- 各分支独立构建，包含中文讲解、可运行实现、演示和测试；不需要切换其他分支取代码。
-- 紧密关联的概念合并讲解，例如 Page ID、Slot ID、RID；具有独立机制的算法分别实现。
-- `main` 保留本目录、原始资料和设计文档，不累积全部知识点实现。
-- 实现目标为“教学级机制完整”，不是生产级数据库；简化、适用范围和不支持的能力必须写清楚。
+日志记录为 Update、Commit、Abort 三类，带递增 LSN、事务号、页号、before/after、prevLSN。Abort 在这里表示**恢复已完成撤销**，不是业务主动中止请求。事务对页持严格写所有权，不允许脏写；因此未提交事务的 before image 不会覆盖其他事务在它之后提交的同页更新。
 
-设计与验收细节见 [`docs/superpowers/specs/2026-09-09-database-topics-design.md`](docs/superpowers/specs/2026-09-09-database-topics-design.md)。
+恢复分四步：
 
-## 当前状态
+1. 扫描提交和已完成 Abort，分类 winner、旧 loser、新 loser。
+2. 从零初始镜像正序重放所有非旧 loser 的 Update：重现历史，包括新 loser。
+3. 逆序撤销新 loser，写 before image。重复赋值而非反向算术，避免多次恢复累计改变结果。
+4. 同步 WAL、原子替换页快照，然后为每个新 loser 追加并同步 Abort。
 
-**82 个知识点已规划；0 个实现完成；尚未创建知识点分支。**
+先保存撤销结果再标记完成。为什么保留 Abort？恢复后允许新事务修改原来 loser 的页；若下一次恢复再次撤销旧 loser，会覆盖新事务的提交。正序重放必须跳过有 Abort 的历史事务。
 
-表中的分支名是计划名称，不代表分支已经存在。只有实现、讲解及测试验收通过并提交后，才标记为“已验证”。
+这里故意不信任上次恢复部分完成的磁盘镜像，而是从零完整重建；恢复期间再次退出可重新执行全部步骤，不需要 CLR。这是 77 之前的简单算法，不是 ARIES 的原地增量恢复。完整日志不能删除。
 
-## 知识点总目录
+## 具体轨迹
 
-### 1. C++ 基础
-
-| 分支 | 讲解与实现 | 状态 |
+| LSN | 日志或动作 | 结果 |
 | --- | --- | --- |
-| `topic/01-cpp-raii` | 对象生命周期、RAII、资源释放；文件资源守卫 | 已规划 |
-| `topic/02-cpp-smart-pointers` | unique_ptr、shared_ptr、weak_ptr、所有权与循环引用 | 已规划 |
-| `topic/03-cpp-move-semantics` | 左值／右值、移动构造、移动赋值；可移动缓冲区 | 已规划 |
-| `topic/04-cpp-templates` | 模板、泛型；简单的泛型数据库组件 | 已规划 |
-| `topic/05-cpp-stl` | 容器、迭代器、算法、迭代器失效；数据库场景示例 | 已规划 |
-| `topic/06-cpp-threading` | 线程、互斥锁、条件变量、读写锁；生产者／消费者队列 | 已规划 |
+| 1 | T1 P0: 0→40 | 内存更新 |
+| 2 | T1 Commit，同步 | winner |
+| 3 | T2 P1: 0→99，刷页 | loser 值已到磁盘 |
+| 恢复 Redo | 重放 1、3 | `[40,99]` |
+| 恢复 Undo | 撤销 3 | `[40,0]` |
+| 4 | 页同步后 T2 Abort | 后续跳过旧 T2 |
 
-### 2. 关系模型与 SQL 逻辑层
+实际 demo 输出：
 
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/07-relational-model` | Relation、Tuple、Attribute、Schema；类型化关系与元组 | 已规划 |
-| `topic/08-relational-constraints` | 主键、外键、非空、检查约束；约束验证 | 已规划 |
-| `topic/09-relational-algebra` | 选择、投影、并、交、差、笛卡尔积、连接；集合语义关系代数 | 已规划 |
-| `topic/10-sql-planning` | SQL、Parser、Binder、逻辑计划、物理计划；限定语法范围的查询转换 | 已规划 |
-
-### 3. 存储引擎
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/11-disk-page-io` | 磁盘导向数据库、文件、固定大小 Page、Page ID；页读写 | 已规划 |
-| `topic/12-tuple-layout` | 元组序列化、定长／变长字段、NULL 位图、元数据 | 已规划 |
-| `topic/13-slotted-page` | 页头、Slot、RID、空闲空间；页内增删改查与整理 | 已规划 |
-| `topic/14-heap-file` | 堆表、跨页存储、RID 定位、堆扫描 | 已规划 |
-| `topic/15-row-store` | NSM 行存布局、整行访问 | 已规划 |
-| `topic/16-column-store` | DSM 列存布局、列扫描、晚物化基础 | 已规划 |
-| `topic/17-pax-layout` | PAX 页内分列、行列混合布局的取舍 | 已规划 |
-
-### 4. 数据压缩
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/18-rle` | 游程编码、解码、适用数据分布 | 已规划 |
-| `topic/19-bit-packing` | 位宽计算、整数打包与解包 | 已规划 |
-| `topic/20-dictionary-encoding` | 字典构建、编码、解码、编码上的等值过滤 | 已规划 |
-| `topic/21-delta-encoding` | 差分编码、还原、边界处理 | 已规划 |
-
-### 5. Buffer Pool
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/22-buffer-pool` | Page 与 Frame、页表、Pin／Unpin、Dirty、Flush、Eviction | 已规划 |
-| `topic/23-lru` | LRU 替换策略、访问轨迹实验 | 已规划 |
-| `topic/24-clock` | Clock 替换策略、引用位 | 已规划 |
-| `topic/25-lru-k` | LRU-K、访问历史、淘汰选择 | 已规划 |
-| `topic/26-disk-scheduler` | 异步磁盘请求、后台线程、完成通知、错误传播 | 已规划 |
-| `topic/27-page-guard` | RAII 页守卫、Pin 生命周期、读写保护 | 已规划 |
-
-### 6. 哈希表
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/28-linear-probing` | 静态哈希、开放寻址、冲突探测、删除标记 | 已规划 |
-| `topic/29-robin-hood-hashing` | 探测距离、交换规则、删除处理 | 已规划 |
-| `topic/30-cuckoo-hashing` | 多候选位置、驱逐链、重建 | 已规划 |
-| `topic/31-extendible-hashing` | 动态哈希、目录、全局／局部深度、桶分裂 | 已规划 |
-| `topic/32-hash-index` | Key → RID 索引、重复键、等值查找 | 已规划 |
-
-### 7. 树索引、过滤器与向量索引
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/33-bplus-tree-insert` | 叶子／内部节点、扇出、树高、查找、插入、递归分裂 | 已规划 |
-| `topic/34-bplus-tree-delete` | 删除、下溢、借位、合并、根收缩 | 已规划 |
-| `topic/35-bplus-tree-iterator` | 叶链、范围查询、迭代器 | 已规划 |
-| `topic/36-concurrent-bplus-tree` | Lock 与 Latch 区别、读写 latch、Latch Coupling／Crabbing | 已规划 |
-| `topic/37-bloom-filter` | 概率过滤器、假阳性、无假阴性的适用条件 | 已规划 |
-| `topic/38-vector-search` | 距离度量、精确 Top-K 检索；近似检索的正确性基线 | 已规划 |
-| `topic/39-ivf-index` | 简化 IVF、向量索引、候选裁剪、召回率取舍 | 已规划 |
-
-### 8. 排序与聚合
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/40-external-merge-sort` | 有界内存、生成有序段、K 路归并、磁盘 I/O | 已规划 |
-| `topic/41-sort-aggregation` | 排序分组、COUNT／SUM／AVG／MIN／MAX | 已规划 |
-| `topic/42-hash-aggregation` | 哈希分组、聚合状态、结果生成 | 已规划 |
-
-### 9. Join 算法
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/43-nested-loop-join` | 嵌套循环连接、比较次数 | 已规划 |
-| `topic/44-index-nested-loop-join` | 使用索引探测内表 | 已规划 |
-| `topic/45-sort-merge-join` | 排序归并连接、重复键匹配 | 已规划 |
-| `topic/46-hash-join` | Build／Probe、重复键、构建侧选择 | 已规划 |
-
-### 10. 查询执行引擎
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/47-volcano-execution` | Iterator／Volcano、Init／Next、Scan → Filter → Projection | 已规划 |
-| `topic/48-materialized-execution` | 算子完整物化中间结果、内存开销 | 已规划 |
-| `topic/49-vectorized-execution` | 批量数据、批量算子、选择向量 | 已规划 |
-| `topic/50-pipelines` | Pipeline、Pipeline Breaker、算子执行边界 | 已规划 |
-| `topic/51-access-executors` | SeqScan、IndexScan、访问路径对比 | 已规划 |
-| `topic/52-modification-executors` | Insert、Update、Delete、表／索引维护 | 已规划 |
-| `topic/53-limit-executor` | LIMIT、OFFSET、提前终止 | 已规划 |
-| `topic/54-window-functions` | 分区、排序、窗口；排名和累计聚合的明确子集 | 已规划 |
-
-### 11. 查询优化器
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/55-predicate-pushdown` | 谓词下推、引用列分析、不能下推的情况 | 已规划 |
-| `topic/56-projection-pushdown` | 列裁剪、保留后续算子所需列 | 已规划 |
-| `topic/57-aggregation-pushdown` | 局部／最终聚合、AVG 分解、安全改写条件 | 已规划 |
-| `topic/58-limit-pushdown` | LIMIT 下推合法条件、错误改写反例 | 已规划 |
-| `topic/59-physical-plan-selection` | 逻辑／物理算子选择、等值连接转换为 Hash Join | 已规划 |
-| `topic/60-statistics-estimation` | 统计信息、直方图、选择率、基数估计 | 已规划 |
-| `topic/61-cost-model` | I/O 与 CPU 成本模型、估计值和实测计数对比 | 已规划 |
-| `topic/62-join-ordering` | 连接顺序枚举、动态规划、计划成本比较 | 已规划 |
-
-### 12. 事务与并发控制
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/63-transaction-acid` | 事务状态、提交／中止、转账；区分内存回滚与持久性保证 | 已规划 |
-| `topic/64-conflict-serializability` | Schedule、冲突、优先图、环检测 | 已规划 |
-| `topic/65-two-phase-locking` | S／X 锁、兼容矩阵、升级、2PL、Strict 2PL | 已规划 |
-| `topic/66-deadlocks` | 等待图、死锁检测、牺牲者选择、中止释放 | 已规划 |
-| `topic/67-timestamp-ordering` | 读／写时间戳、顺序检查、事务中止 | 已规划 |
-| `topic/68-optimistic-concurrency-control` | Read／Validate／Write、读写集、冲突验证 | 已规划 |
-| `topic/69-mvcc-versioning` | 时间戳、Undo Log、版本链、历史元组重建 | 已规划 |
-| `topic/70-snapshot-isolation` | 快照可见性、写写冲突、提交检查 | 已规划 |
-| `topic/71-isolation-anomalies` | 隔离级别、脏读、不可重复读、幻读、丢失更新、写偏斜 | 已规划 |
-| `topic/72-serializable-mvcc` | 多版本上的保守串行化验证、阻止写偏斜 | 已规划 |
-
-### 13. WAL 与恢复
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/73-write-ahead-logging` | 日志记录、LSN、日志先行规则、提交持久化 | 已规划 |
-| `topic/74-buffer-recovery-policies` | Steal／No-Steal、Force／No-Force、Undo／Redo 需求 | 已规划 |
-| `topic/75-checkpointing` | 检查点、事务表、脏页表、恢复起点 | 已规划 |
-| `topic/76-redo-undo` | 已提交事务重做、未提交事务撤销、重复恢复 | 已规划 |
-| `topic/77-aries-recovery` | 教学子集的 Analysis／Redo／Undo、PageLSN、CLR、恢复中再次崩溃 | 已规划 |
-
-### 14. 分布式与并行数据库入门
-
-| 分支 | 讲解与实现 | 状态 |
-| --- | --- | --- |
-| `topic/78-partitioning` | 哈希／范围分区、路由、数据倾斜 | 已规划 |
-| `topic/79-replication` | 主从复制、同步／异步确认、复制滞后、故障边界 | 已规划 |
-| `topic/80-distributed-transactions` | 两阶段提交、跨节点事务、持久化决策、阻塞问题 | 已规划 |
-| `topic/81-distributed-query` | 数据交换、广播／重分区连接、局部聚合 | 已规划 |
-| `topic/82-parallel-execution` | 分区并行、工作分配、结果合并、OLTP／OLAP 工作负载取舍 | 已规划 |
-
-Bloom Filter、IVF 和两阶段提交是为原始资料中的“过滤器”“向量索引”“分布式事务”选择的具体教学算法，并非原文指定的算法。
-
-## 建议学习顺序
-
-```text
-C++ 基础 → 关系模型与 SQL
-                 ↓
-存储布局 → 压缩 → 缓冲池
-                 ↓
-哈希表 → B+Tree → 并发索引 → 过滤器与向量索引
-                 ↓
-排序／聚合／Join → 执行模型 → 查询优化
-                 ↓
-事务基础 → 并发控制 → MVCC 与隔离
-                 ↓
-WAL → 检查点 → 恢复
-                 ↓
-分布式与并行数据库入门
+```
+durableLSN=3 stolen page1=99 redo=0 undo=0
+recovered page0=40 page1=0 redo=2 undo=1
 ```
 
-编号是稳定的目录标识，不是严格的依赖顺序。例如学习 Buffer Pool 前可先读替换策略，学习并发 B+Tree 前应掌握线程同步。每个知识点的 README 会列出精确前置知识。
+若 T2 连续把 P1 从 0→20→30，必须先撤销 30→20，再撤销 20→0。正序 Undo 会错误留下 20。测试在 Redo 完成、第一次 Undo 和页落盘后分别 `_exit`，再由新进程完成恢复，并提交 T3=77，验证旧 Undo 不会覆盖新提交。
 
-## 每个知识点的使用方式
+## 文件校验与失败策略
 
-以下是实现分支须提供的统一命令约定；当前 `main` 只有目录与设计，不能执行这些构建命令。
+`Log` 每条固定 72 字节、小端编码、FNV-1a 校验；长度为完整记录的前缀加短尾时，只截掉不足一条的尾部并 fsync，然后才允许追加。完整记录即使位于末尾，只要校验错误也立即失败。测试枚举 1..71 字节的所有短尾长度，并验证校验正确但页号非法的记录也被拒绝。LSN 必须连续，prevLSN 必须向后且同事务，类型和页号必须合法。
+
+`writeAll`/`readAll` 处理短 I/O 和 EINTR，异常向上传播；失败后关闭并重启，禁止继续使用部分写入的实例。页是四个 `(value,PageLSN)` 的整体快照，先同步临时文件、rename、同步目录。刷页前同步日志，提交记录也同步。PageLSN 在此不用于跳过 Redo，Undo 后置零，因为恢复镜像会从创世重算。
+
+## 源码和成本
+
+`src/wal.hpp`：编码与 Fd → Log → Store 的正常事务操作 → `recover` 四步；`redone/undone` 是实际赋值计数，hook 是测试崩溃注入点，不是打印阶段替代算法。`tests/tests.cpp` 是独立运行期检查，Release 不会删除。`src/temp.hpp` 用唯一临时目录，析构清理；子进程 `_exit` 不触发数据库析构，父进程管理目录。
+
+日志解析 O(L)，集合分类与查找 O(L log T)，空间 O(L+T)，四页 O(1)。每次更新追加 72 字节，提交一次同步。恢复每个新 loser 追加一条 Abort；再次完整恢复不追加重复 Abort。未进行日志压缩、分段读取或检查点优化，恢复成本随历史增长。
+
+## 构建与预期
 
 ```sh
-# 仅对总目录中已标记为“已验证”的分支执行
-# git switch topic/NN-name
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
+cmake --build build -j2
 ctest --test-dir build --output-on-failure
 ./build/demo
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release -j2
+ctest --test-dir build-release --output-on-failure
+./build-release/demo
 ```
 
-测试必须在 Debug 与 Release 构建下都有效，不得依赖会被 NDEBUG 删除的断言作为唯一正确性检查。较复杂知识点可以提供额外命令，但应保留上述基本入口。
+macOS 缺少 libc++ 头文件时，两个配置命令条件性附加：
 
-## 原始资料与适用范围
+```sh
+-DCMAKE_CXX_FLAGS="-isystem $(xcrun --show-sdk-path)/usr/include/c++/v1"
+```
 
-- 原始 `spec.md` 保留不变，作为需求来源。
-- 原文引用 Fall 2025、Spring 2026 与 Fall 2026，不构成统一的课程版本锁定。
-- Page 大小等具体参数由对应实现说明，不将某个 BusTub 版本的参数说成通用规定。
-- 概念联系 PostgreSQL、DuckDB、TiDB、Milvus 等系统，不表示这些系统使用完全相同的实现。
-- 不声称生产可用、不提供官方课程评分保证，也不以进程崩溃测试代替真实断电安全证明。
+CTest 预期一项通过。覆盖提交/未提交 × 偷写/未偷写、空库、越界、冲突、重复恢复、恢复中再次退出、恢复后新提交、所有短尾长度、完整坏记录。CTest 超时 20 秒。
+
+## 明确限制
+
+POSIX 单进程单线程，四个 unsigned 整数页，事务号不可重用，无业务 abort、并发打开、脏写、锁等待、多版本或 CLR。打开已有库必须先 recover，不能对活跃实例恢复。FNV 不提供对恶意篡改的认证，校验失败停止服务而非自动修复。恢复要求零初始镜像与完整历史；不要把它当作真实数据库就地恢复算法。`fsync` 及目录同步的设备保证依赖系统，进程退出仍保留内核缓存，测试不能证明断电安全。
