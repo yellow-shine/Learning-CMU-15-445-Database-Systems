@@ -33,7 +33,7 @@ demo 输出 `sum=30 scan columns=3 required=2`。
 
 ## 复杂度与边界
 
-计划遍历 O(nodes *columns log columns)；物化投影 O(rows* columns log columns)。
+计划遍历 `O(nodes × columns log columns)`；物化投影 `O(rows × columns log columns)`。
 连接使用嵌套循环 O(nm)，分组使用有序容器 O(n log groups)，空间包括中间结果。
 整数 SUM 假设不溢出 int；教学数据很小，不适用于大数生产聚合。
 只支持具名列、SUM、单列分组，无 DISTINCT、HAVING、表达式别名、子查询或 SQL 解析。

@@ -1,5 +1,6 @@
 #pragma once
 #include "plan.hpp"
+#include <iterator>
 namespace db {
 inline Columns intersect(const Columns&a,const Columns&b){Columns c;std::set_intersection(a.begin(),a.end(),b.begin(),b.end(),std::inserter(c,c.end()));return c;}
 inline P prune(P p,Columns needed) {
