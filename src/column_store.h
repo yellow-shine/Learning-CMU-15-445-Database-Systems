@@ -30,7 +30,9 @@ class ColumnStore {
     // Validate the entire position list before recording any access.
     for(auto i:positions) if(i>=size()) throw std::out_of_range("row position");
     std::vector<std::uint32_t> ids; ids.reserve(positions.size());
-    for(auto i:positions) { ids.push_back(columns_[0][i]); ++scalar_reads; }
+    for(auto i:positions) ids.push_back(columns_[0][i]);
+    // The counter may alias a position; update only after all positions are consumed.
+    scalar_reads+=positions.size();
     return ids;
   }
 };

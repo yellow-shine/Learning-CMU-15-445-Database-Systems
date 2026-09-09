@@ -13,6 +13,9 @@ int main() { try {
     CHECK(got==expected); CHECK(reads==rows.size()); CHECK(store.project_ids(got,reads)==ids); CHECK(reads==rows.size()+ids.size());
   }
   reads=0; CHECK(store.project_ids({2,0,2},reads)==std::vector<std::uint32_t>({2,0,2})); CHECK(reads==3);
+  ColumnStore single({{1,10,20}}); std::vector<std::size_t> positions{0,0};
+  CHECK(single.project_ids(positions,positions[1])==std::vector<std::uint32_t>({1,1}));
+  CHECK(positions[1]==2);
   reads=0; rejects([&]{store.project_ids({0,SIZE_MAX},reads);}); rejects([&]{store.get(store.size(),reads);});
   rejects([&]{store.column(3);}); CHECK(reads==0);
   std::cout<<"column store checks passed\n";
