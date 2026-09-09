@@ -1,11 +1,13 @@
 # 59 从逻辑连接选择物理算法
 
 ## 问题与前置知识
+
 逻辑 Join 指定匹配关系，物理 Join 决定怎样找匹配。前置知识是内连接、哈希表、
 嵌套循环和 NULL。不能看到 Join 就替换成 Hash Join，必须检查真正的连接条件。
 本例使用枚举表示 Equal/Less/Greater，不依赖字符串猜测。
 
 ## 选择和执行
+
 `select_physical` 递归复制计划，对内连接的 Equal 条件选择 HashJoin。
 非等值保留嵌套循环，外连接也保守保留；两者都有真正可执行的路径。
 HashJoin 构建右输入的 unordered_multimap，再逐个左键 equal_range 探测。
@@ -14,18 +16,21 @@ HashJoin 构建右输入的 unordered_multimap，再逐个左键 equal_range 探
 结果遵循多重集语义；哈希表遍历不保证顺序，等价检查比较排序后的完整多重集。
 
 ## 手算轨迹
+
 A=[1,2,2]，B=[2,2,3]。等值连接键 2 的两个左行各匹配两个右行，输出 4 行。
 小于连接：键 1 匹配三行，每个键 2 匹配键 3，共 5 行。
 demo 输出 `HashJoin rows=4`、`NestedLoop rows=5`。
 若把小于强行解释为等值，(1,2) 这一对会从真变假，测试展示答案差异。
 
 ## 源码导读与测试
+
 `src/plan.hpp` 附带独立计划结构、schema 校验和两种连接解释器，支持具名整数/NULL 行。
 `src/optimizer.hpp` 仅负责算法匹配和递归选择，不实现基数估算或成本排序。
 `tests/tests.cpp` 在多种输入大小上比较物理与朴素路径，包含重复键、NULL、空表、
 三种比较、外连接、Filter 包裹、错误等值替换与 HashJoin 拒绝非等值。
 
 ## 成本与局限
+
 嵌套循环 O(nm)，Hash Join 平均 O(n+m+输出)，哈希最坏退化仍可达 O(nm)。
 哈希构建空间 O(m)，所有执行器物化结果，输出本身可能平方增长。
 这里固定右侧 build，不比较内存预算、磁盘 spill、索引或 Merge Join。
