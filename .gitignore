@@ -1,0 +1,4 @@
+/build*/
+/.superpowers/
+/.pi/subagents/
+.DS_Store
