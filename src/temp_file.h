@@ -1,6 +1,7 @@
 #pragma once
 #include "disk.h"
 #include <chrono>
+#include <string>
 // Demo/test-owned directory: atomic creation avoids overwriting existing data.
 class TempFile {
  public:

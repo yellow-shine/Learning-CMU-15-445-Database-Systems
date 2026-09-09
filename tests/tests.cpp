@@ -7,6 +7,9 @@ int main() {
   static_assert(!std::is_copy_constructible_v<ReadPageGuard>);
   static_assert(std::is_nothrow_move_constructible_v<WritePageGuard>);
   TempFile file(3); Disk disk(file.path()); BufferPool pool(disk, 2);
+  { ReadPageGuard first(pool, 0); }
+  { ReadPageGuard second(pool, 1); }
+  CHECK(pool.resident() == 2);
   ReadPageGuard empty; empty.drop(); rejects([&] { empty.data(); });
   {
     WritePageGuard a(pool, 0); a.mutable_data()[0] = 'G';

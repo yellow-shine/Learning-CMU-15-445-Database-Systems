@@ -31,7 +31,11 @@ class BufferPool {
     }
     // ponytail: linear first-unpinned victim, use a replacer for larger pools.
     std::size_t victim = 0;
-    while (victim < frames_.size() && frames_[victim].pins) ++victim;
+    while (victim < frames_.size() && frames_[victim].page_id) ++victim;
+    if (victim == frames_.size()) {
+      victim = 0;
+      while (victim < frames_.size() && frames_[victim].pins) ++victim;
+    }
     if (victim == frames_.size()) throw std::runtime_error("all frames pinned");
     Page incoming = disk_.read(id);  // Failed read leaves resident mappings intact.
     auto& frame = frames_[victim];
