@@ -7,6 +7,15 @@
 #include <random>
 #include <set>
 using namespace tutorial;
+struct ThrowingCopy {
+ std::atomic<int>& copies;
+ std::atomic<int>& active;
+ ThrowingCopy(std::atomic<int>& c,std::atomic<int>& a):copies(c),active(a) {}
+ ThrowingCopy(const ThrowingCopy& other):copies(other.copies),active(other.active) {
+  if(++copies==3) throw std::runtime_error("callback copy failed");
+ }
+ std::int64_t operator()(int value) const {++active; auto out=square(value); --active; return out;}
+};
 int main() {
  rejects([]{parallel_map({},0,1,square);}); rejects([]{parallel_map({},257,1,square);}); rejects([]{parallel_map({},1,0,square);});
  CHECK(parallel_map({},4,1,square).per_worker.empty());
@@ -37,4 +46,7 @@ int main() {
   });
  } catch(const std::domain_error& e) {propagated=std::string(e.what())=="worker failed";}
  CHECK(propagated && active.load()==0 && calls.load()>0);
+ std::atomic<int> copies{0}; ThrowingCopy copy_failure(copies,active);
+ rejects([&]{parallel_map(input,4,1,copy_failure);});
+ CHECK(copies.load()==3 && active.load()==0);
 }
