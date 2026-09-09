@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <utility>
 #include <vector>
 struct Row { int key; int value; };
 struct Stats { std::size_t scan_calls=0, filter_calls=0, projection_calls=0, reads=0; };
