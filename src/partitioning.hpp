@@ -1,6 +1,8 @@
 #pragma once
 #include <algorithm>
 #include <cstdint>
+#include <functional>
+#include <utility>
 #include <stdexcept>
 #include <vector>
 namespace tutorial {
